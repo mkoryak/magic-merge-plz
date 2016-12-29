@@ -101,7 +101,7 @@ export default class extends EventEmitter {
             const opts = this.optsHelper(repo);
 
             const prs = await this.github.pullRequests.getAll(opts());
-            
+
             this.emit('debug', `[${repo}] has ${prs.length} open PRs`);
 
             prs.forEach(async pr => {
@@ -152,7 +152,7 @@ export default class extends EventEmitter {
                     const approved = reviews.find(t => t.state === 'APPROVED');
                     const notApproved = reviews.find(t => t.state === 'CHANGES_REQUESTED');
 
-                    his.github.issues.addAssigneesToIssue(opts({
+                    this.github.issues.addAssigneesToIssue(opts({
                         number: pr.number,
                         assignees: [this.settings.username]
                     }));
