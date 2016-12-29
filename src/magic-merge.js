@@ -1,21 +1,26 @@
 import GitHubApi from 'github';
 import EventEmitter from 'events';
 
+
+const STALE_PR_LABEL = 'Stale PR';
+
 export default class extends EventEmitter {
 
     // settings.org         string, org name - catalant
     // settings.interval    number, interval in ms how often to re-check for prs
     // settings.repos       array, array of repo names in org to check
     // settings.label       string, magic label name, defaults to 'a magic merge plz'
-    // settings.auth        object, auth object with {username, password} or {token}
-    // settings.stalePrDays number, number of days a pr should stay open to get an emitted event about it
+    // settings.user        string, username of user who will be acting on behalf of magic-merge
+    // settings.auth        object, auth object with {password} or {token}
+    // settings.stalePrDays number, number of days a pr should stay open to get an emitted event
+    // about it
 
     constructor(settings) {
         super();
 
         this.settings = settings;
         this.label = settings.label || 'a magic merge plz';
-        
+
         if (settings.auth.token) {
             this.auth = {
                 type: 'oauth',
@@ -24,7 +29,7 @@ export default class extends EventEmitter {
         } else {
             this.auth = {
                 type: 'basic',
-                username: settings.auth.username,
+                username: settings.username,
                 password: settings.auth.password
             };
         }
@@ -33,7 +38,6 @@ export default class extends EventEmitter {
             protocol: 'https',
             host: 'api.github.com',
             headers: {
-                'Accept': 'application/vnd.github.black-cat-preview+json',
                 'user-agent': 'magic-merge-plz' // GitHub is happy with a unique user agent
             },
             Promise: Promise,
@@ -45,86 +49,160 @@ export default class extends EventEmitter {
 
     async ensureMagicLabels() {
         this.settings.repos.forEach(async repo => {
-            const opts = (obj={}) => {
-               return Object.assign({}, {
-                   owner: this.settings.org,
-                   repo,
-                   name: this.label
-               }, obj);
-            };
+            const opts = this.optsHelper(repo);
             try {
-                await this.github.issues.getLabel(opts());
-            } catch (nope) {
-                // const l = await this.github.issues.createLabel(opts({
-                //     color: '00ff00'
-                // }));
-                // TODO: the above does not work for some reason. investigate!
-                this.emit('warning', `repo ${repo} does not have a label named [${this.label}]`);
-            }
+                await this.github.issues.createLabel(opts({
+                    color: '00ff00',
+                    name: this.label
+                }));
+            } catch(foo) {}
+
+            try {
+                await this.github.issues.createLabel(opts({
+                    color: 'ff0000',
+                    name: STALE_PR_LABEL
+                }));
+            } catch(foo) {}
         });
+    }
+
+    optsHelper(repo) {
+        return (obj={}) => {
+           return Object.assign({}, {owner: this.settings.org, repo}, obj);
+        };
+    }
+
+    async getReaction(pr, repo, reaction) {
+        const opts = this.optsHelper(repo);
+
+        const status = (await this.github.reactions.getForIssue(opts({number: pr.number, content: reaction})))
+            .filter(r => r.user.login === this.settings.username);
+
+        if (status.length == 1 && status[0].id) {
+            return status[0];
+        }
+    }
+    async setReaction(pr, repo, reaction, value) {
+        const opts = this.optsHelper(repo);
+
+        if (value) {
+            return this.github.reactions.createForIssue(opts({number: pr.number, content: reaction}));
+        } else {
+            const status = await this.getReaction(pr, repo, reaction);
+            if (status) {
+                return this.github.reactions.delete(opts({id: status.id}));
+            }
+        }
     }
 
     async loop() {
         this.github.authenticate(this.auth);
         this.settings.repos.forEach(async repo => {
 
-            const opts = (obj={}) => {
-               return Object.assign({}, {owner: this.settings.org, repo}, obj);
-            };
+            const opts = this.optsHelper(repo);
 
             const prs = await this.github.pullRequests.getAll(opts());
-
+            
             this.emit('debug', `[${repo}] has ${prs.length} open PRs`);
 
             prs.forEach(async pr => {
                 const hasMagicLabel = (await this.github.issues.getIssueLabels(opts({
                     name: this.label,
                     number: pr.number
-                }))).length > 0;
+                }))).filter(l => l.name === this.label).length === 1;
 
-                if (this.settings.ancientPrDays) {
+                if (this.settings.stalePrDays) {
                     const now = Date.now();
                     const createdAt = new Date(pr.created_at).getTime();
                     const endTime = createdAt + (3600000 * 24 * this.settings.stalePrDays);
+
                     if (now > endTime) {
                         // this PR has been open for longer than `ancientPrDays`
                         this.emit('stale', pr, repo);
+                        try {
+                           this.github.issues.addLabels(opts({number: pr.number, body: [STALE_PR_LABEL]}));
+                        } catch(dontCare) {}
                     }
                 }
 
                 if (hasMagicLabel) {
-                    const reviews = await this.github.pullRequests.getReviews(opts({number: pr.number}));
+                    let reviews = await this.github.pullRequests.getReviews(opts({number: pr.number}));
+
+                    const lastReviews = {};
+
+                    reviews.forEach(r => {
+                        let last = lastReviews[r.user.login];
+                        const date = new Date(r.submitted_at).getTime();
+                        if (last) {
+                            if (last.date < date) {
+                                lastReviews[r.user.login] = {
+                                    date,
+                                    state: r.state
+                                }
+                            }
+                        } else {
+                            lastReviews[r.user.login] = {
+                                date,
+                                state: r.state
+                            }
+                        }
+                    });
+                    // reviews returns entire history, so we only care about the last review of a given user
+                    reviews = Object.values(lastReviews);
 
                     const approved = reviews.find(t => t.state === 'APPROVED');
+                    const notApproved = reviews.find(t => t.state === 'CHANGES_REQUESTED');
 
-                    if (approved) {
-                        const mergeStatus = await this.github.pullRequests.merge(opts({
-                            number: pr.number,
-                            sha: pr.head.sha,
-                            commit_title: "magic merge!"
-                        }));
+                    his.github.issues.addAssigneesToIssue(opts({
+                        number: pr.number,
+                        assignees: [this.settings.username]
+                    }));
 
-                        if (mergeStatus.merged) {
-                            // cool, create our comment and delete branch
 
-                            this.github.issues.createComment(opts({
+                    if (notApproved) {
+                        this.emit('debug', `pr #${pr.number} in [${repo}] has changes requested`);
+                        this.setReaction(pr, repo, '-1', true);
+                        this.setReaction(pr, repo, '+1', false);
+                    } else if (approved) {
+                        try {
+                            const mergeStatus = await this.github.pullRequests.merge(opts({
                                 number: pr.number,
-                                body: '☃  magicmerge by dogalant  ☃'
+                                sha: pr.head.sha,
+                                commit_title: "magic merge!"
                             }));
 
-                            this.github.gitdata.deleteReference(opts({
-                                ref: `heads/${pr.head.ref}`
-                            }));
+                            this.setReaction(pr, repo, '-1', false);
+                            this.setReaction(pr, repo, '+1', true);
 
-                            this.emit('debug', `pr #${pr.number} in [${repo}] was merged`);
-                            this.emit('merged', pr, repo);
-                        } else {
-                            this.emit('debug', `pr #${pr.number} in [${repo}] could not be merged: ${JSON.stringify(mergeStatus)}`);
+                            if (mergeStatus.merged) {
+                                // cool, create our comment and delete branch
+
+                                this.github.issues.createComment(opts({
+                                    number: pr.number,
+                                    body: '☃  magicmerge by dogalant  ☃'
+                                }));
+
+                                this.github.gitdata.deleteReference(opts({
+                                    ref: `heads/${pr.head.ref}`
+                                }));
+
+                                this.emit('debug', `pr #${pr.number} in [${repo}] was merged`);
+                                this.emit('merged', pr, repo);
+                            }  else {
+                                this.emit('debug', `pr #${pr.number} in [${repo}] could not be merged: ${JSON.stringify(mergeStatus)}`);
+                            }
+
+                        } catch(notMergable) {
+                            this.emit('warning', `pr #${pr.number} in [${repo}] could not be merged: ${JSON.stringify(notMergable)}`);
                         }
                     } else {
                         this.emit('debug', `pr #${pr.number} in [${repo}] has not been approved yet, skipping`);
                     }
                 } else {
+                    this.github.issues.removeAssigneesFromIssue(opts({
+                        number: pr.number,
+                        body: { "assignees": [this.settings.username] }
+                    }));
                     this.emit('debug', `pr #${pr.number} in [${repo}] does not have a magic label, skipping`);
                 }
             });
@@ -133,6 +211,7 @@ export default class extends EventEmitter {
 
     async start() {
         await this.ensureMagicLabels();
+        this.loop();
         return setInterval(() => this.loop(), this.settings.interval);
     }
 

@@ -5,9 +5,10 @@ if(!module.parent) {
     const magic = new MagicMerge({
         org: 'catalant',
         interval: 1000 * 30,
-        repos: ['magic-merge-plz', 'hn-webpack', 'hn-nerd-experience', 'hn-enterprise-portal', 'hn-marketing-sales'],
+        repos: ['hn-webpack', 'magic-merge-plz', 'hn-nerd-experience', 'hn-enterprise-portal', 'hn-marketing-sales'],
         label: 'a magic merge plz',
-        stalePrDays: 1,
+        stalePrDays: 5,
+        username: 'mkoryak',
         auth: require('./auth.json')
     });
     const timer = magic.start();
@@ -22,7 +23,7 @@ if(!module.parent) {
 
     magic.on('stale', (pr, repo) => {
         // you will see this if a pr has been open for longer than `stalePrDays`
-        console.log('stale pr', pr, repo);
+        console.log('stale pr', pr.number, repo);
     });
 
     setTimeout(() => {
