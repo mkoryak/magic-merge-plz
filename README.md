@@ -50,10 +50,14 @@ const magic = new MagicMerge({
 });
 
 // start checking the repos for PRs with the magic merge label which are approved
-const timer = m.start();
+const timer = magic.start();
 
 magic.on('debug', (msg) => {
     console.log('magic-merge:', msg);
+});
+
+magic.on('warning', (msg) => {
+    console.log('magic-merge WARN:', msg);
 });
 
 magic.on('merged', (pr, repo) => {
