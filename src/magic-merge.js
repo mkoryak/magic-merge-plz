@@ -125,6 +125,13 @@ export default class extends EventEmitter {
                 }
 
                 if (hasMagicLabel) {
+                    const status = await this.github.repos.getCombinedStatus(opts({ref: pr.head.sha}));
+                    if (status.state !== 'success' && status.statuses.length) {
+                        // jenkins is building (if there are no statuses, then there is no jenkins integration there)
+                        this.emit('debug', `pr #${pr.number} in [${repo}] is still building`);
+                        return;
+                    }
+
                     let reviews = await this.github.pullRequests.getReviews(opts({number: pr.number}));
 
                     const lastReviews = {};
@@ -146,7 +153,8 @@ export default class extends EventEmitter {
                             }
                         }
                     });
-                    // reviews returns entire history, so we only care about the last review of a given user
+                    // reviews returns entire history, so we only care about the last review of a
+                    // given user
                     reviews = Object.values(lastReviews);
 
                     const approved = reviews.find(t => t.state === 'APPROVED');
