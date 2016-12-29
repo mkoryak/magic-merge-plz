@@ -165,6 +165,13 @@ exports.default = class extends _events2.default {
                             }
 
                             if (hasMagicLabel) {
+                                const status = yield _this4.github.repos.getCombinedStatus(opts({ ref: pr.head.sha }));
+                                if (status.state !== 'success' && status.statuses.length) {
+                                    // jenkins is building (if there are no statuses, then there is no jenkins integration there)
+                                    _this4.emit('debug', `pr #${ pr.number } in [${ repo }] is still building`);
+                                    return;
+                                }
+
                                 let reviews = yield _this4.github.pullRequests.getReviews(opts({ number: pr.number }));
 
                                 const lastReviews = {};
@@ -186,7 +193,8 @@ exports.default = class extends _events2.default {
                                         };
                                     }
                                 });
-                                // reviews returns entire history, so we only care about the last review of a given user
+                                // reviews returns entire history, so we only care about the last review of a
+                                // given user
                                 reviews = Object.values(lastReviews);
 
                                 const approved = reviews.find(function (t) {
