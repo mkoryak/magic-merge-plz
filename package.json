@@ -1,11 +1,11 @@
 {
   "name": "magic-merge-plz",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "github magic merge",
   "main": "index.js",
   "scripts": {
-    "build": "./node_modules/babel-cli/bin/babel.js src -d dist",
-    "postinstall": "npm run build"
+    "build": "babel src -d dist",
+    "prepublish": "npm run build"
   },
   "repository": {
     "type" : "git",
