@@ -4,11 +4,11 @@ if(!module.parent) {
 
     const magic = new MagicMerge({
         org: 'catalant',
-        interval: 1000 * 10,
-        repos: ['main-app'], //'hn-webpack', 'magic-merge-plz', 'hn-nerd-experience', 'hn-enterprise-portal', 'hn-marketing-sales'],
+        interval: 1000 * 15,
+        repos: ['magic-merge-plz', 'main-app'], //'hn-webpack', 'magic-merge-plz', 'hn-nerd-experience', 'hn-enterprise-portal', 'hn-marketing-sales'],
         label: 'a magic merge plz',
         stalePrDays: 0,
-        username: 'mkoryak',
+        username: 'HourlyNerdDeployment',
         auth: require('./auth.json')
     });
     const timer = magic.start();
