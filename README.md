@@ -6,10 +6,12 @@ If it finds such PRs it will merge them and delete the branch.
 
 It is useful if you have things that run which prevent merging until they complete, and people have to
 constantly go back and check their status before doing the merge.
+# requirements
+node 6+  
 
 # installing
 
-`npm i magic-merge-plz`
+`npm install magic-merge-plz`
 
 # using
 
