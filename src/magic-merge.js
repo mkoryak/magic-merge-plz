@@ -12,8 +12,7 @@ export default class extends EventEmitter {
     // settings.label       string, magic label name, defaults to 'a magic merge plz'
     // settings.user        string, username of user who will be acting on behalf of magic-merge
     // settings.auth        object, auth object with {password} or {token}
-    // settings.stalePrDays number, number of days a pr should stay open to get an emitted event
-    // about it
+    // settings.stalePrDays number, number of days a pr should stay open to get an emitted event about it
 
     constructor(settings) {
         super();

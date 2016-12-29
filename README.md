@@ -7,7 +7,7 @@ If it finds such PRs it will merge them and delete the branch.
 It is useful if you have things that run which prevent merging until they complete, and people have to
 constantly go back and check their status before doing the merge.
 # requirements
-node 6+  
+node 6+
 
 # installing
 
@@ -21,12 +21,13 @@ the constructor takes a settings object:
 
 ```js
 {
-    org, // string, org name - catalant
-    interval, // number, interval in ms how often to re-check for prs
-    repos, // array, array of repo names in org to check
-    label, // string, magic label name, defaults to 'a magic merge plz'
-    auth, // object, auth object with {username, password} or {token}
-    stalePrDays // number, number of days a pr should stay open to get an alert about it
+    settings.org         string, org name - catalant
+    settings.interval    number, interval in ms how often to re-check for prs
+    settings.repos       array, array of repo names in org to check
+    settings.label       string, magic label name, defaults to 'a magic merge plz'
+    settings.user        string, username of user who will be acting on behalf of magic-merge
+    settings.auth        object, auth object with {password} or {token}
+    settings.stalePrDays number, number of days a pr should stay open to get an emitted event about it
 }
 ```
 
@@ -48,6 +49,7 @@ const magic = new MagicMerge({
     repos: ['magic-merge-plz', 'hn-webpack', 'hn-nerd-experience', 'hn-enterprise-portal', 'hn-marketing-sales'],
     label: 'a magic merge plz',
     stalePrDays: 1,
+    username: 'catman',
     auth: require('./auth.json')
 });
 
