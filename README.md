@@ -7,21 +7,21 @@ If it finds such PRs it will merge them and delete the branch.
 It is useful if you have things that run which prevent merging until they complete, and people have to
 constantly go back and check their status before doing the merge.
 
-# other things it does
+# Other things it does
 
 - if a PR has any "changes requested" things, it will thumb down the PR
 - if a PR has no "changes requested" and at least one approval, it will thumb up the PR
 - if the magic label is added to a PR it will add itself as an asignee, and remove itself if label is removed
 - there is an option to have it mark stale PRs with "Stale PR" label. 
 
-# requirements
+# Requirements
 node 6+
 
-# installing
+# Installing
 
 `npm install magic-merge-plz`
 
-# using
+# Using
 
 The export of this thing is a class named MagicMerge
 
@@ -46,7 +46,7 @@ the instance of MagicMerge is an EventEmitter, it emits the following events:
 - stale (args: pr, repo)
 - warning (args: message)
 
-# example
+# Example
 
 ```js
 import MagicMerge from 'magic-merge-plz';
