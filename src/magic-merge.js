@@ -1,7 +1,7 @@
 import GitHubApi from 'github';
 import EventEmitter from 'events';
 
-export default class MagicMerge extends EventEmitter {
+export default class extends EventEmitter {
 
     // settings.org         string, org name - catalant
     // settings.interval    number, interval in ms how often to re-check for prs
