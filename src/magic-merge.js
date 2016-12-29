@@ -2,18 +2,20 @@ import GitHubApi from 'github';
 import EventEmitter from 'events';
 
 export default class MagicMerge extends EventEmitter {
-    constructor(settings={
-            org, // string, org name - catalant
-            interval, // number, interval in ms how often to re-check for prs
-            repos, // array, array of repo names in org to check
-            label, // string, magic label name, defaults to 'a magic merge plz'
-            auth, // object, auth object with {username, password} or {token}
-            stalePrDays // number, number of days a pr should stay open to get an alert about it
-    }) {
+
+    // settings.org         string, org name - catalant
+    // settings.interval    number, interval in ms how often to re-check for prs
+    // settings.repos       array, array of repo names in org to check
+    // settings.label       string, magic label name, defaults to 'a magic merge plz'
+    // settings.auth        object, auth object with {username, password} or {token}
+    // settings.stalePrDays number, number of days a pr should stay open to get an emitted event about it
+
+    constructor(settings) {
         super();
 
         this.settings = settings;
         this.label = settings.label || 'a magic merge plz';
+        
         if (settings.auth.token) {
             this.auth = {
                 type: 'oauth',
@@ -133,5 +135,5 @@ export default class MagicMerge extends EventEmitter {
         await this.ensureMagicLabels();
         return setInterval(() => this.loop(), this.settings.interval);
     }
-    
+
 };

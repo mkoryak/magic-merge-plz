@@ -4,7 +4,7 @@ if(!module.parent) {
 
     const magic = new MagicMerge({
         org: 'catalant',
-        interval: 1000 * 60,
+        interval: 1000 * 30,
         repos: ['magic-merge-plz', 'hn-webpack', 'hn-nerd-experience', 'hn-enterprise-portal', 'hn-marketing-sales'],
         label: 'a magic merge plz',
         stalePrDays: 1,
