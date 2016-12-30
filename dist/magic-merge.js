@@ -12,6 +12,10 @@ var _events = require('events');
 
 var _events2 = _interopRequireDefault(_events);
 
+var _cats = require('./cats');
+
+var _cats2 = _interopRequireDefault(_cats);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
@@ -64,7 +68,7 @@ exports.default = class extends _events2.default {
         var _this = this;
 
         return _asyncToGenerator(function* () {
-            _this.settings.repos.forEach((() => {
+            yield Promise.all(_this.settings.repos.map((() => {
                 var _ref = _asyncToGenerator(function* (repo) {
                     const opts = _this.optsHelper(repo);
                     try {
@@ -85,7 +89,7 @@ exports.default = class extends _events2.default {
                 return function (_x) {
                     return _ref.apply(this, arguments);
                 };
-            })());
+            })()));
         })();
     }
 
@@ -101,6 +105,7 @@ exports.default = class extends _events2.default {
         return _asyncToGenerator(function* () {
             const opts = _this2.optsHelper(repo);
 
+            // TODO: the filter here is busted. find out what it returns and fix it
             const status = (yield _this2.github.reactions.getForIssue(opts({ number: pr.number, content: reaction }))).filter(function (r) {
                 return r.user.login === _this2.settings.username;
             });
@@ -127,52 +132,67 @@ exports.default = class extends _events2.default {
         })();
     }
 
-    loop() {
+    makeMergeComment(args) {
         var _this4 = this;
 
         return _asyncToGenerator(function* () {
-            _this4.github.authenticate(_this4.auth);
-            _this4.settings.repos.forEach((() => {
+            try {
+                const cat = yield (0, _cats2.default)();
+                args.body = `☃  magicmerge by dogalant  ☃\n\n![poop](${ cat })`;
+            } catch (poo) {
+                args.body = `☃  magicmerge by dogalant  ☃`;
+            }
+
+            return _this4.github.issues.createComment(args);
+        })();
+    }
+
+    loop() {
+        var _this5 = this;
+
+        return _asyncToGenerator(function* () {
+            _this5.github.authenticate(_this5.auth);
+            _this5.settings.repos.forEach((() => {
                 var _ref2 = _asyncToGenerator(function* (repo) {
 
-                    const opts = _this4.optsHelper(repo);
+                    const opts = _this5.optsHelper(repo);
 
-                    const prs = yield _this4.github.pullRequests.getAll(opts());
+                    const prs = yield _this5.github.pullRequests.getAll(opts());
 
-                    _this4.emit('debug', `[${ repo }] has ${ prs.length } open PRs`);
+                    _this5.emit('debug', `[${ repo }] has ${ prs.length } open PRs`);
 
                     prs.forEach((() => {
                         var _ref3 = _asyncToGenerator(function* (pr) {
-                            const hasMagicLabel = (yield _this4.github.issues.getIssueLabels(opts({
-                                name: _this4.label,
+                            const hasMagicLabel = (yield _this5.github.issues.getIssueLabels(opts({
+                                name: _this5.label,
                                 number: pr.number
                             }))).filter(function (l) {
-                                return l.name === _this4.label;
+                                return l.name === _this5.label;
                             }).length === 1;
 
-                            if (_this4.settings.stalePrDays) {
+                            if (_this5.settings.stalePrDays) {
                                 const now = Date.now();
                                 const createdAt = new Date(pr.created_at).getTime();
-                                const endTime = createdAt + 3600000 * 24 * _this4.settings.stalePrDays;
+                                const endTime = createdAt + 3600000 * 24 * _this5.settings.stalePrDays;
 
                                 if (now > endTime) {
                                     // this PR has been open for longer than `ancientPrDays`
-                                    _this4.emit('stale', pr, repo);
+                                    _this5.emit('stale', pr, repo);
                                     try {
-                                        _this4.github.issues.addLabels(opts({ number: pr.number, body: [STALE_PR_LABEL] }));
+                                        _this5.github.issues.addLabels(opts({ number: pr.number, body: [STALE_PR_LABEL] }));
                                     } catch (dontCare) {}
                                 }
                             }
 
                             if (hasMagicLabel) {
-                                const status = yield _this4.github.repos.getCombinedStatus(opts({ ref: pr.head.sha }));
+                                const status = yield _this5.github.repos.getCombinedStatus(opts({ ref: pr.head.sha }));
                                 if (status.state !== 'success' && status.statuses.length) {
                                     // jenkins is building (if there are no statuses, then there is no jenkins integration there)
-                                    _this4.emit('debug', `pr #${ pr.number } in [${ repo }] is still building`);
+                                    _this5.emit('debug', `pr #${ pr.number } in [${ repo }] is still building`);
                                     return;
                                 }
 
-                                let reviews = yield _this4.github.pullRequests.getReviews(opts({ number: pr.number }));
+                                let reviews = yield _this5.github.pullRequests.getReviews(opts({ number: pr.number }));
 
                                 const lastReviews = {};
 
@@ -204,55 +224,54 @@ exports.default = class extends _events2.default {
                                     return t.state === 'CHANGES_REQUESTED';
                                 });
 
-                                _this4.github.issues.addAssigneesToIssue(opts({
+                                _this5.github.issues.addAssigneesToIssue(opts({
                                     number: pr.number,
-                                    assignees: [_this4.settings.username]
+                                    assignees: [_this5.settings.username]
                                 }));
 
                                 if (notApproved) {
-                                    _this4.emit('debug', `pr #${ pr.number } in [${ repo }] has changes requested`);
-                                    _this4.setReaction(pr, repo, '-1', true);
-                                    _this4.setReaction(pr, repo, '+1', false);
+                                    _this5.emit('debug', `pr #${ pr.number } in [${ repo }] has changes requested`);
+                                    _this5.setReaction(pr, repo, '-1', true);
+                                    _this5.setReaction(pr, repo, '+1', false);
                                 } else if (approved) {
                                     try {
-                                        const mergeStatus = yield _this4.github.pullRequests.merge(opts({
+                                        const mergeStatus = yield _this5.github.pullRequests.merge(opts({
                                             number: pr.number,
                                             sha: pr.head.sha,
                                             commit_title: "magic merge!"
                                         }));
 
-                                        _this4.setReaction(pr, repo, '-1', false);
-                                        _this4.setReaction(pr, repo, '+1', true);
+                                        _this5.setReaction(pr, repo, '-1', false);
+                                        _this5.setReaction(pr, repo, '+1', true);
 
                                         if (mergeStatus.merged) {
                                             // cool, create our comment and delete branch
 
-                                            _this4.github.issues.createComment(opts({
-                                                number: pr.number,
-                                                body: '☃  magicmerge by dogalant  ☃'
+                                            _this5.makeMergeComment(opts({
+                                                number: pr.number
                                             }));
 
-                                            _this4.github.gitdata.deleteReference(opts({
+                                            _this5.github.gitdata.deleteReference(opts({
                                                 ref: `heads/${ pr.head.ref }`
                                             }));
 
-                                            _this4.emit('debug', `pr #${ pr.number } in [${ repo }] was merged`);
-                                            _this4.emit('merged', pr, repo);
+                                            _this5.emit('debug', `pr #${ pr.number } in [${ repo }] was merged`);
+                                            _this5.emit('merged', pr, repo);
                                         } else {
-                                            _this4.emit('debug', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(mergeStatus) }`);
+                                            _this5.emit('debug', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(mergeStatus) }`);
                                         }
                                     } catch (notMergable) {
-                                        _this4.emit('warning', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(notMergable) }`);
+                                        _this5.emit('warning', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(notMergable) }`);
                                     }
                                 } else {
-                                    _this4.emit('debug', `pr #${ pr.number } in [${ repo }] has not been approved yet, skipping`);
+                                    _this5.emit('debug', `pr #${ pr.number } in [${ repo }] has not been approved yet, skipping`);
                                 }
                             } else {
-                                _this4.github.issues.removeAssigneesFromIssue(opts({
+                                _this5.github.issues.removeAssigneesFromIssue(opts({
                                     number: pr.number,
-                                    body: { "assignees": [_this4.settings.username] }
+                                    body: { "assignees": [_this5.settings.username] }
                                 }));
-                                _this4.emit('debug', `pr #${ pr.number } in [${ repo }] does not have a magic label, skipping`);
+                                _this5.emit('debug', `pr #${ pr.number } in [${ repo }] does not have a magic label, skipping`);
                             }
                         });
 
@@ -270,14 +289,14 @@ exports.default = class extends _events2.default {
     }
 
     start() {
-        var _this5 = this;
+        var _this6 = this;
 
         return _asyncToGenerator(function* () {
-            yield _this5.ensureMagicLabels();
-            _this5.loop();
+            yield _this6.ensureMagicLabels();
+            _this6.loop();
             return setInterval(function () {
-                return _this5.loop();
-            }, _this5.settings.interval);
+                return _this6.loop();
+            }, _this6.settings.interval);
         })();
     }
 

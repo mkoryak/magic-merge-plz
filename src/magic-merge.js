@@ -97,8 +97,13 @@ export default class extends EventEmitter {
     }
 
     async makeMergeComment(args) {
-        const cat = await catmaker();
-        args.body = `☃  magicmerge by dogalant  ☃\n\n![poop](${cat})`;
+        try {
+            const cat = await catmaker();
+            args.body = `☃  magicmerge by dogalant  ☃\n\n![poop](${cat})`;
+        } catch (poo) {
+            args.body = `☃  magicmerge by dogalant  ☃`;
+        }
+        
         return this.github.issues.createComment(args);
     }
 
