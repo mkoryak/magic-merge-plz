@@ -13,7 +13,8 @@ export default class extends EventEmitter {
     // settings.label       string, magic label name, defaults to 'a magic merge plz'
     // settings.user        string, username of user who will be acting on behalf of magic-merge
     // settings.auth        object, auth object with {password} or {token}
-    // settings.stalePrDays number, number of days a pr should stay open to get an emitted event about it
+    // settings.stalePrDays number, number of days a pr should stay open to get an emitted event
+    // about it
 
     constructor(settings) {
         super();
@@ -103,7 +104,7 @@ export default class extends EventEmitter {
         } catch (poo) {
             args.body = `☃  magicmerge by dogalant  ☃`;
         }
-        
+
         return this.github.issues.createComment(args);
     }
 
@@ -139,8 +140,8 @@ export default class extends EventEmitter {
 
                 if (hasMagicLabel) {
                     const status = await this.github.repos.getCombinedStatus(opts({ref: pr.head.sha}));
-                    if (status.state !== 'success' && status.statuses.length) {
-                        // jenkins is building (if there are no statuses, then there is no jenkins integration there)
+                    if (status.state !== 'success') {
+                        // jenkins is building 
                         this.emit('debug', `pr #${pr.number} in [${repo}] is still building`);
                         return;
                     }
