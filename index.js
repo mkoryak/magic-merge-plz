@@ -5,10 +5,10 @@ if(!module.parent) {
     const magic = new MagicMerge({
         org: 'catalant',
         interval: 1000 * 15,
-        repos: ['magic-merge-plz', 'main-app'], //'hn-webpack', 'magic-merge-plz', 'hn-nerd-experience', 'hn-enterprise-portal', 'hn-marketing-sales'],
+        repos: ['magic-merge-plz'],
         label: 'a magic merge plz',
         stalePrDays: 0,
-        username: 'HourlyNerdDeployment',
+        username: 'mkoryak',
         auth: require('./auth.json')
     });
     const timer = magic.start();
@@ -32,5 +32,4 @@ if(!module.parent) {
     }, 1000 * 60 * 20);
 }
 
-const MagicMerge = require('./dist/magic-merge').default;
-export default MagicMerge;
+module.exports = require('./dist/magic-merge').default;
