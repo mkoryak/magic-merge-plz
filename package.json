@@ -1,6 +1,6 @@
 {
   "name": "magic-merge-plz",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "description": "github magic merge",
   "main": "index.js",
   "scripts": {
@@ -8,19 +8,20 @@
     "prepublish": "npm run build"
   },
   "repository": {
-    "type" : "git",
-    "url" : "https://github.com/npm/npm.git"
+    "type": "git",
+    "url": "https://github.com/Catalant/magic-merge-plz.git"
   },
   "author": "Catalant Inc",
   "license": "MIT",
   "dependencies": {
-    "github": "7.2.0"
+    "github": "7.2.0",
+    "needle": "1.4.3"
   },
   "devDependencies": {
     "babel-preset-eslatest-node6": "1.0.1",
     "babel-cli": "^6.0.0"
   },
-  "engines" : {
-    "node" : ">=6.0.0"
+  "engines": {
+    "node": ">=6.0.0"
   }
 }

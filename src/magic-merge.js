@@ -1,5 +1,6 @@
 import GitHubApi from 'github';
 import EventEmitter from 'events';
+import catmaker from './cats';
 
 
 const STALE_PR_LABEL = 'Stale PR';
@@ -47,7 +48,7 @@ export default class extends EventEmitter {
     };
 
     async ensureMagicLabels() {
-        this.settings.repos.forEach(async repo => {
+        await Promise.all(this.settings.repos.map(async repo => {
             const opts = this.optsHelper(repo);
             try {
                 await this.github.issues.createLabel(opts({
@@ -62,7 +63,7 @@ export default class extends EventEmitter {
                     name: STALE_PR_LABEL
                 }));
             } catch(foo) {}
-        });
+        }));
     }
 
     optsHelper(repo) {
@@ -74,6 +75,7 @@ export default class extends EventEmitter {
     async getReaction(pr, repo, reaction) {
         const opts = this.optsHelper(repo);
 
+        // TODO: the filter here is busted. find out what it returns and fix it
         const status = (await this.github.reactions.getForIssue(opts({number: pr.number, content: reaction})))
             .filter(r => r.user.login === this.settings.username);
 
@@ -92,6 +94,17 @@ export default class extends EventEmitter {
                 return this.github.reactions.delete(opts({id: status.id}));
             }
         }
+    }
+
+    async makeMergeComment(args) {
+        try {
+            const cat = await catmaker();
+            args.body = `☃  magicmerge by dogalant  ☃\n\n![poop](${cat})`;
+        } catch (poo) {
+            args.body = `☃  magicmerge by dogalant  ☃`;
+        }
+        
+        return this.github.issues.createComment(args);
     }
 
     async loop() {
@@ -184,9 +197,8 @@ export default class extends EventEmitter {
                             if (mergeStatus.merged) {
                                 // cool, create our comment and delete branch
 
-                                this.github.issues.createComment(opts({
-                                    number: pr.number,
-                                    body: '☃  magicmerge by dogalant  ☃'
+                                this.makeMergeComment(opts({
+                                    number: pr.number
                                 }));
 
                                 this.github.gitdata.deleteReference(opts({
