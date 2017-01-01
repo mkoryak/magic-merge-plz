@@ -1,15 +1,4 @@
-if(!module.parent) {
-    // this must run with babel-node (its for testing only, not for YOU)
-    const MagicMerge = require('./src/magic-merge').default;
-
-    const magic = new MagicMerge({
-        org: 'catalant',
-        interval: 1000 * 15,
-        repos: ['magic-merge-plz'],
-        label: 'a magic merge plz',
-        stalePrDays: 0,
-        username: 'mkoryak',
-        auth: require('./auth.json')
+sadgfa
     });
     const timer = magic.start();
 
