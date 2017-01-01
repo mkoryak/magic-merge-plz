@@ -59,7 +59,7 @@ const magic = new MagicMerge({
     label: 'a magic merge plz',
     stalePrDays: 1,
     username: 'catman',
-    auth: require('./auth.json')
+    auth: require('./auth.json') // object with {password: 'secret'} or {token: 'deadbeef'}
 });
 
 // start checking the repos for PRs with the magic merge label which are approved
