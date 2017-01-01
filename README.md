@@ -1,5 +1,6 @@
 # magic-merge-plz
 automate github branch merging.
+asdfasdfasd
 
 This thing checks your github repos for PRs which are APPROVED and have a magic label added to them.
 If it finds such PRs it will merge them and delete the branch.
