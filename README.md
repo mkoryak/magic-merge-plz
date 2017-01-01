@@ -82,6 +82,8 @@ magic.on('stale', (pr, repo) => {
     console.log('stale pr', pr, repo);
 });
 
+sadfasdfadsfsdfa
+
 setTimeout(() => {
     // shut off the thing in 20 mins (you should never need to do this)
     clearInterval(timer);
