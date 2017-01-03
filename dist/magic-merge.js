@@ -21,11 +21,11 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
 
 const STALE_PR_LABEL = 'Stale PR';
+const EXCLUDED_BRANCHES = new Set(['develop', 'master', 'release-candidate']);
 
 exports.default = class extends _events2.default {
 
     // settings.org         string, org name - catalant
-    // settings.interval    number, interval in ms how often to re-check for prs
     // settings.repos       array, array of repo names in org to check
     // settings.label       string, magic label name, defaults to 'a magic merge plz'
     // settings.user        string, username of user who will be acting on behalf of magic-merge
@@ -51,6 +51,7 @@ exports.default = class extends _events2.default {
                 password: settings.auth.password
             };
         }
+
         this.github = new _github2.default({
             debug: false,
             protocol: 'https',
@@ -63,78 +64,123 @@ exports.default = class extends _events2.default {
             // redirects, so allow ability to disable follow-redirects
             timeout: 5000
         });
+
+        this.nextRequestTimeoutSeconds = 1; //this number will change based on rate limit calculations
     }
 
-    ensureMagicLabels() {
+    /**
+     * factory function that takes the 2 most common args in each api request, returns:
+     * function(fn, args)
+     *
+     * the returned function knows about github request rate limits and will throttle calls to
+     * fn to ensure that we never run out of requests
+     * @param repo
+     * @param pr
+     * @returns {function()}
+     */
+    makeQueue(repo, pr) {
         var _this = this;
 
-        return _asyncToGenerator(function* () {
-            yield Promise.all(_this.settings.repos.map((() => {
-                var _ref = _asyncToGenerator(function* (repo) {
-                    const opts = _this.optsHelper(repo);
+        const nipples = {
+            owner: this.settings.org
+        };
+        repo && (nipples.repo = repo);
+        pr && (nipples.number = pr.number);
+
+        return (op, params = {}) => {
+            return new Promise((resolve, reject) => {
+                setTimeout(_asyncToGenerator(function* () {
                     try {
-                        yield _this.github.issues.createLabel(opts({
+                        const result = yield op(Object.assign({}, nipples, params));
+
+                        if (result && result.meta) {
+                            const meta = result.meta;
+                            if (result.meta['x-ratelimit-remaining'] > 0) {
+                                const unixNow = ~~(Date.now() / 1000);
+                                _this.nextRequestTimeoutSeconds = Math.max(~~((meta['x-ratelimit-reset'] - unixNow) / meta['x-ratelimit-remaining']), 1.5);
+                                // console.log('magic-merge.js - queue() timeout seconds:', this.nextRequestTimeoutSeconds, 'remaining: ', meta['x-ratelimit-remaining'], 'minutes left:', ((meta['x-ratelimit-reset'] - unixNow) / 60));
+                            } else {
+                                    // not much i can do, next request will probably fail
+                                }
+                        }
+                        resolve(result);
+                    } catch (e) {
+                        reject(e);
+                    }
+                }), this.nextRequestTimeoutSeconds * 1000);
+            });
+        };
+    }
+
+    /**
+     * make sure that each repo we monitor has the labels we plan to use
+     */
+    ensureMagicLabels() {
+        var _this2 = this;
+
+        return _asyncToGenerator(function* () {
+
+            yield Promise.all(_this2.settings.repos.map((() => {
+                var _ref2 = _asyncToGenerator(function* (repo) {
+                    const queue = _this2.makeQueue(repo);
+                    try {
+                        yield queue(_this2.github.issues.createLabel, {
                             color: '00ff00',
-                            name: _this.label
-                        }));
+                            name: _this2.label
+                        });
                     } catch (foo) {}
 
                     try {
-                        yield _this.github.issues.createLabel(opts({
+                        yield queue(_this2.github.issues.createLabel, {
                             color: 'ff0000',
                             name: STALE_PR_LABEL
-                        }));
+                        });
                     } catch (foo) {}
                 });
 
                 return function (_x) {
-                    return _ref.apply(this, arguments);
+                    return _ref2.apply(this, arguments);
                 };
             })()));
         })();
     }
 
-    optsHelper(repo) {
-        return (obj = {}) => {
-            return Object.assign({}, { owner: this.settings.org, repo }, obj);
-        };
-    }
-
+    // thumbs up etc..
     getReaction(pr, repo, reaction) {
-        var _this2 = this;
-
-        return _asyncToGenerator(function* () {
-            const opts = _this2.optsHelper(repo);
-
-            // TODO: the filter here is busted. find out what it returns and fix it
-            const status = (yield _this2.github.reactions.getForIssue(opts({ number: pr.number, content: reaction }))).filter(function (r) {
-                return r.user.login === _this2.settings.username;
-            });
-
-            if (status.length == 1 && status[0].id) {
-                return status[0];
-            }
-        })();
-    }
-    setReaction(pr, repo, reaction, value) {
         var _this3 = this;
 
         return _asyncToGenerator(function* () {
-            const opts = _this3.optsHelper(repo);
+            const queue = _this3.makeQueue(repo, pr);
+            const status = (yield queue(_this3.github.reactions.getForIssue, { content: reaction })).find(function (r) {
+                return r.user.login === _this3.settings.username;
+            });
+
+            if (status && status.id) {
+                return status;
+            }
+        })();
+    }
+
+    // thumbs up etc..
+    setReaction(pr, repo, reaction, value) {
+        var _this4 = this;
+
+        return _asyncToGenerator(function* () {
+            const queue = _this4.makeQueue(repo, pr);
 
             if (value) {
-                return _this3.github.reactions.createForIssue(opts({ number: pr.number, content: reaction }));
+                return queue(_this4.github.reactions.createForIssue, { number: pr.number, content: reaction });
             } else {
-                const status = yield _this3.getReaction(pr, repo, reaction);
+                const status = yield _this4.getReaction(pr, repo, reaction);
                 if (status) {
-                    return _this3.github.reactions.delete(opts({ id: status.id }));
+                    return queue(_this4.github.reactions.delete, { id: status.id });
                 }
             }
         })();
     }
 
     makeMergeComment(args) {
-        var _this4 = this;
+        var _this5 = this;
 
         return _asyncToGenerator(function* () {
             try {
@@ -143,57 +189,61 @@ exports.default = class extends _events2.default {
             } catch (poo) {
                 args.body = `☃  magicmerge by dogalant  ☃`;
             }
-
-            return _this4.github.issues.createComment(args);
+            const queue = _this5.makeQueue();
+            return queue(_this5.github.issues.createComment, args);
         })();
     }
 
+    // do work
     loop() {
-        var _this5 = this;
+        var _this6 = this;
 
         return _asyncToGenerator(function* () {
-            _this5.github.authenticate(_this5.auth);
-            _this5.settings.repos.forEach((() => {
-                var _ref2 = _asyncToGenerator(function* (repo) {
+            _this6.github.authenticate(_this6.auth);
+            yield Promise.all(_this6.settings.repos.map((() => {
+                var _ref3 = _asyncToGenerator(function* (repo) {
 
-                    const opts = _this5.optsHelper(repo);
+                    const prs = yield _this6.makeQueue(repo)(_this6.github.pullRequests.getAll);
 
-                    const prs = yield _this5.github.pullRequests.getAll(opts());
-
-                    _this5.emit('debug', `[${ repo }] has ${ prs.length } open PRs`);
+                    _this6.emit('debug', `[${ repo }] has ${ prs.length } open PRs`);
 
                     prs.forEach((() => {
-                        var _ref3 = _asyncToGenerator(function* (pr) {
-                            const hasMagicLabel = (yield _this5.github.issues.getIssueLabels(opts({
-                                name: _this5.label,
-                                number: pr.number
-                            }))).filter(function (l) {
-                                return l.name === _this5.label;
+                        var _ref4 = _asyncToGenerator(function* (pr) {
+                            const queue = _this6.makeQueue(repo, pr);
+                            const hasMagicLabel = (yield queue(_this6.github.issues.getIssueLabels, {
+                                name: _this6.label
+                            })).filter(function (l) {
+                                return l.name === _this6.label;
                             }).length === 1;
 
-                            if (_this5.settings.stalePrDays) {
+                            if (EXCLUDED_BRANCHES.has(pr.head.ref)) {
+                                // lets be sure we never do anything really stupid with these
+                                return;
+                            }
+
+                            if (_this6.settings.stalePrDays) {
                                 const now = Date.now();
                                 const createdAt = new Date(pr.created_at).getTime();
-                                const endTime = createdAt + 3600000 * 24 * _this5.settings.stalePrDays;
+                                const endTime = createdAt + 3600000 * 24 * _this6.settings.stalePrDays;
 
                                 if (now > endTime) {
                                     // this PR has been open for longer than `ancientPrDays`
-                                    _this5.emit('stale', pr, repo);
+                                    _this6.emit('stale', pr, repo);
                                     try {
-                                        _this5.github.issues.addLabels(opts({ number: pr.number, body: [STALE_PR_LABEL] }));
+                                        yield queue(_this6.github.issues.addLabels, { body: [STALE_PR_LABEL] });
                                     } catch (dontCare) {}
                                 }
                             }
 
                             if (hasMagicLabel) {
-                                const status = yield _this5.github.repos.getCombinedStatus(opts({ ref: pr.head.sha }));
-                                if (status.state !== 'success') {
-                                    // jenkins is building 
-                                    _this5.emit('debug', `pr #${ pr.number } in [${ repo }] is still building`);
+                                const status = yield queue(_this6.github.repos.getCombinedStatus, { ref: pr.head.sha });
+                                if (status.state !== 'success' && status.statuses.length) {
+                                    // jenkins is building
+                                    _this6.emit('debug', `pr #${ pr.number } in [${ repo }] is still building`);
                                     return;
                                 }
 
-                                let reviews = yield _this5.github.pullRequests.getReviews(opts({ number: pr.number }));
+                                let reviews = yield queue(_this6.github.pullRequests.getReviews);
 
                                 const lastReviews = {};
 
@@ -225,80 +275,74 @@ exports.default = class extends _events2.default {
                                     return t.state === 'CHANGES_REQUESTED';
                                 });
 
-                                _this5.github.issues.addAssigneesToIssue(opts({
-                                    number: pr.number,
-                                    assignees: [_this5.settings.username]
-                                }));
+                                yield queue(_this6.github.issues.addAssigneesToIssue, {
+                                    assignees: [_this6.settings.username]
+                                });
 
                                 if (notApproved) {
-                                    _this5.emit('debug', `pr #${ pr.number } in [${ repo }] has changes requested`);
-                                    _this5.setReaction(pr, repo, '-1', true);
-                                    _this5.setReaction(pr, repo, '+1', false);
+                                    _this6.emit('debug', `pr #${ pr.number } in [${ repo }] has changes requested`);
+
+                                    yield Promise.all([_this6.setReaction(pr, repo, '-1', true), _this6.setReaction(pr, repo, '+1', false)]);
                                 } else if (approved) {
                                     try {
-                                        const mergeStatus = yield _this5.github.pullRequests.merge(opts({
-                                            number: pr.number,
-                                            sha: pr.head.sha,
+                                        const mergeStatus = yield queue(_this6.github.pullRequests.merge, {
                                             commit_title: "magic merge!"
-                                        }));
+                                        });
 
-                                        _this5.setReaction(pr, repo, '-1', false);
-                                        _this5.setReaction(pr, repo, '+1', true);
+                                        yield Promise.all([_this6.setReaction(pr, repo, '-1', false), _this6.setReaction(pr, repo, '+1', true)]);
 
                                         if (mergeStatus.merged) {
                                             // cool, create our comment and delete branch
 
-                                            _this5.makeMergeComment(opts({
+                                            yield _this6.makeMergeComment({
                                                 number: pr.number
-                                            }));
+                                            });
 
-                                            _this5.github.gitdata.deleteReference(opts({
+                                            yield queue(_this6.github.gitdata.deleteReference, {
                                                 ref: `heads/${ pr.head.ref }`
-                                            }));
+                                            });
 
-                                            _this5.emit('debug', `pr #${ pr.number } in [${ repo }] was merged`);
-                                            _this5.emit('merged', pr, repo);
+                                            _this6.emit('debug', `pr #${ pr.number } in [${ repo }] was merged`);
+                                            _this6.emit('merged', pr, repo);
                                         } else {
-                                            _this5.emit('debug', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(mergeStatus) }`);
+                                            _this6.emit('debug', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(mergeStatus) }`);
                                         }
                                     } catch (notMergable) {
-                                        _this5.emit('warning', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(notMergable) }`);
+                                        _this6.emit('warning', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(notMergable) }`);
                                     }
                                 } else {
-                                    _this5.emit('debug', `pr #${ pr.number } in [${ repo }] has not been approved yet, skipping`);
+                                    _this6.emit('debug', `pr #${ pr.number } in [${ repo }] has not been approved yet, skipping`);
                                 }
                             } else {
-                                _this5.github.issues.removeAssigneesFromIssue(opts({
-                                    number: pr.number,
-                                    body: { "assignees": [_this5.settings.username] }
-                                }));
-                                _this5.emit('debug', `pr #${ pr.number } in [${ repo }] does not have a magic label, skipping`);
+                                queue(_this6.github.issues.removeAssigneesFromIssue, {
+                                    body: { "assignees": [_this6.settings.username] }
+                                });
+                                _this6.emit('debug', `pr #${ pr.number } in [${ repo }] does not have a magic label, skipping`);
                             }
                         });
 
                         return function (_x3) {
-                            return _ref3.apply(this, arguments);
+                            return _ref4.apply(this, arguments);
                         };
                     })());
                 });
 
                 return function (_x2) {
-                    return _ref2.apply(this, arguments);
+                    return _ref3.apply(this, arguments);
                 };
-            })());
+            })()));
+
+            setTimeout(function () {
+                _this6.loop();
+            }, _this6.nextRequestTimeoutSeconds * 1000);
         })();
     }
 
     start() {
-        var _this6 = this;
-
-        return _asyncToGenerator(function* () {
-            yield _this6.ensureMagicLabels();
-            _this6.loop();
-            return setInterval(function () {
-                return _this6.loop();
-            }, _this6.settings.interval);
-        })();
+        this.ensureMagicLabels().then(() => {
+            this.loop();
+        });
+        return this;
     }
 
 };

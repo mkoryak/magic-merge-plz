@@ -12,7 +12,7 @@ constantly go back and check their status before doing the merge.
 - if a PR has any "changes requested" things, it will thumb down the PR
 - if a PR has no "changes requested" and at least one approval, it will thumb up the PR
 - if the magic label is added to a PR it will add itself as an asignee, and remove itself if label is removed
-- there is an option to have it mark stale PRs with "Stale PR" label. 
+- there is an option to have it mark stale PRs with "Stale PR" label.
 
 # Requirements
 node 6+
@@ -30,7 +30,6 @@ the constructor takes a settings object:
 ```js
 {
     settings.org         string, org name - catalant
-    settings.interval    number, interval in ms how often to re-check for prs
     settings.repos       array, array of repo names in org to check
     settings.label       string, magic label name, defaults to 'a magic merge plz'
     settings.user        string, username of user who will be acting on behalf of magic-merge
@@ -53,7 +52,6 @@ import MagicMerge from 'magic-merge-plz';
 
 const magic = new MagicMerge({
     org: 'catalant',
-    interval: 1000 * 60,
     repos: ['magic-merge-plz', 'hn-webpack', 'hn-nerd-experience', 'hn-enterprise-portal', 'hn-marketing-sales'],
     label: 'a magic merge plz',
     stalePrDays: 1,
@@ -62,21 +60,13 @@ const magic = new MagicMerge({
 });
 
 // start checking the repos for PRs with the magic merge label which are approved
-const timer = magic.start();
-
-magic.on('debug', (msg) => {
+magic.start().on('debug', (msg) => {
     console.log('magic-merge:', msg);
-});
-
-magic.on('warning', (msg) => {
+}).on('warning', (msg) => {
     console.log('magic-merge WARN:', msg);
-});
-
-magic.on('merged', (pr, repo) => {
+}).on('merged', (pr, repo) => {
     console.log('MERGED!', repo, pr.number);
-});
-
-magic.on('stale', (pr, repo) => {
+}).on('stale', (pr, repo) => {
     // you will see this if a pr has been open for longer than `stalePrDays`
     console.log('stale pr', pr, repo);
 });
