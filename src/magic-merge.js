@@ -48,7 +48,8 @@ export default class extends EventEmitter {
             timeout: 5000
         });
 
-        this.nextRequestTimeoutSeconds = 1; //this number will change based on rate limit calculations
+        this.nextRequestTimeoutSeconds = 5; //this number will change based on rate limit
+                                            // calculations
     };
 
     /**
@@ -83,10 +84,10 @@ export default class extends EventEmitter {
                             if (result.meta['x-ratelimit-remaining'] > 0) {
                                 const unixNow = ~~(Date.now() / 1000);
                                 this.nextRequestTimeoutSeconds = Math.max(
-                                    ~~((meta['x-ratelimit-reset'] - unixNow) / meta['x-ratelimit-remaining']),
-                                    1.5
-                                );
-                                // console.log('magic-merge.js - queue() timeout seconds:', this.nextRequestTimeoutSeconds, 'remaining: ', meta['x-ratelimit-remaining'], 'minutes left:', ((meta['x-ratelimit-reset'] - unixNow) / 60));
+                                    Math.ceil((meta['x-ratelimit-reset'] - unixNow) / meta['x-ratelimit-remaining'] / this.settings.repos.length),
+                                    5
+                                ) + 0.5;
+                                this.emit('throttle', this.nextRequestTimeoutSeconds, meta['x-ratelimit-remaining'], (meta['x-ratelimit-reset'] - unixNow) / 60);
                             } else {
                                 // not much i can do, next request will probably fail
                             }

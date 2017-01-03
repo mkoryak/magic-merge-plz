@@ -44,6 +44,7 @@ the instance of MagicMerge is an EventEmitter, it emits the following events:
 - merged (args: pr, repo)
 - stale (args: pr, repo)
 - warning (args: message)
+- throttle (args: nextRequestTimeoutSeconds, remainingRequests, resetMins)
 
 # Example
 
@@ -69,6 +70,8 @@ magic.start().on('debug', (msg) => {
 }).on('stale', (pr, repo) => {
     // you will see this if a pr has been open for longer than `stalePrDays`
     console.log('stale pr', pr, repo);
+}).on('throttle', (nextRequestTimeoutSeconds, remainingRequests, resetMins) => {
+    console.log(`request timeout seconds: [${nextRequestTimeoutSeconds}] remaining requests: [${remainingRequests}] rate reset in minutes: [${resetMins}]`);
 });
 
 setTimeout(() => {

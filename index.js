@@ -18,6 +18,8 @@ if(!module.parent) {
         }).on('stale', (pr, repo) => {
             // you will see this if a pr has been open for longer than `stalePrDays`
             console.log('stale pr', pr.number, repo);
+        }).on('throttle', (nextRequestTimeoutSeconds, remaining, resetMins) => {
+            console.log(`request timeout seconds: [${nextRequestTimeoutSeconds}] remaining requests: [${remaining}] rate reset in minutes: [${resetMins}]`);
         });
 }
 

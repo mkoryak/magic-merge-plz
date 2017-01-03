@@ -65,7 +65,8 @@ exports.default = class extends _events2.default {
             timeout: 5000
         });
 
-        this.nextRequestTimeoutSeconds = 1; //this number will change based on rate limit calculations
+        this.nextRequestTimeoutSeconds = 5; //this number will change based on rate limit
+        // calculations
     }
 
     /**
@@ -97,11 +98,11 @@ exports.default = class extends _events2.default {
                             const meta = result.meta;
                             if (result.meta['x-ratelimit-remaining'] > 0) {
                                 const unixNow = ~~(Date.now() / 1000);
-                                _this.nextRequestTimeoutSeconds = Math.max(~~((meta['x-ratelimit-reset'] - unixNow) / meta['x-ratelimit-remaining']), 1.5);
-                                // console.log('magic-merge.js - queue() timeout seconds:', this.nextRequestTimeoutSeconds, 'remaining: ', meta['x-ratelimit-remaining'], 'minutes left:', ((meta['x-ratelimit-reset'] - unixNow) / 60));
+                                _this.nextRequestTimeoutSeconds = Math.max(Math.ceil((meta['x-ratelimit-reset'] - unixNow) / meta['x-ratelimit-remaining'] / _this.settings.repos.length), 5) + 0.5;
+                                _this.emit('throttle', _this.nextRequestTimeoutSeconds, meta['x-ratelimit-remaining'], (meta['x-ratelimit-reset'] - unixNow) / 60);
                             } else {
-                                    // not much i can do, next request will probably fail
-                                }
+                                // not much i can do, next request will probably fail
+                            }
                         }
                         resolve(result);
                     } catch (e) {
