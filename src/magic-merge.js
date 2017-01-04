@@ -1,7 +1,7 @@
 import GitHubApi from 'github';
 import EventEmitter from 'events';
 import catmaker from './cats';
-
+import poopmaker from './pooping';
 
 const STALE_PR_LABEL = 'Stale PR';
 const EXCLUDED_BRANCHES = new Set(['develop', 'master', 'release-candidate']);
@@ -152,8 +152,14 @@ export default class extends EventEmitter {
 
     async makeMergeComment(args) {
         try {
-            const cat = await catmaker();
-            args.body = `☃  magicmerge by dogalant  ☃\n\n![poop](${cat})`;
+            const [ cat, poop ] = await [ catmaker(), poopmaker() ];
+
+            args.body = [
+                `☃  magicmerge by dogalant  ☃`,
+                poop,
+                `![poop](${cat})`
+            ].join('\n\n');
+
         } catch (poo) {
             args.body = `☃  magicmerge by dogalant  ☃`;
         }
