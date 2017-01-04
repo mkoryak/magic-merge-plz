@@ -152,7 +152,7 @@ export default class extends EventEmitter {
 
     async makeMergeComment(args) {
         try {
-            const [ cat, poop ] = await [ catmaker(), poopmaker() ];
+            const [ cat, poop ] = await Promise.all([ catmaker(), poopmaker() ]);
 
             args.body = [
                 `☃  magicmerge by dogalant  ☃`,
