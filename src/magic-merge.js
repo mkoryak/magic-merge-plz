@@ -8,9 +8,10 @@ import Bottleneck from 'bottleneck';
 const STALE_PR_LABEL = 'Stale PR';
 const EXCLUDED_BRANCHES = new Set(['develop', 'master', 'release-candidate']);
 
-const limiter = new Bottleneck(5, 750);
+const limiter = new Bottleneck(2, 1500);
 
 const PRIORITY = {
+    INSANE: -1, //actually skip the queue, just do it and hope we dont run out of requests
     HIGHEST: 0,
     HIGH: 3,
     NORMAL: 5,
@@ -60,8 +61,7 @@ export default class extends EventEmitter {
         });
 
         this.selfAssinged = {};
-
-
+        this.conditionalComments = {};
     };
 
     /**
@@ -81,18 +81,26 @@ export default class extends EventEmitter {
         repo && (nipples.repo = repo);
         pr && (nipples.number = pr.number);
 
-        return async (op, params={}, priority=PRIORITY.NORMAL) => {
+        const fn = async (op, params={}, priority=PRIORITY.NORMAL) => {
             if (params instanceof Number) {
                 priority = params;
                 params = {};
             }
 
             try {
-                const result = await limiter.schedulePriority(priority, op, Object.assign(
+                let result;
+                const arg = Object.assign(
                     {},
                     nipples,
                     params
-                ));
+                );
+
+                if (priority == PRIORITY.INSANE) {
+                    this.emit('debug', 'insane priority request happened, it should not happen often');
+                    result = await op(arg);
+                } else {
+                    result = await limiter.schedulePriority(priority, op, arg);
+                }
 
                 if (result && result.meta) {
                     const meta = result.meta;
@@ -106,6 +114,8 @@ export default class extends EventEmitter {
                 this.emit('error', e);
             }
         };
+        fn.$key = pr ? pr.head.ref : 'poop';
+        return fn;
     }
 
     /**
@@ -134,26 +144,22 @@ export default class extends EventEmitter {
 
 
     // thumbs up etc..
-    async getReaction(pr, repo, reaction) {
-        const queue = this.makeQueue(repo, pr);
-        const status = (await queue(this.github.reactions.getForIssue, {content: reaction}, PRIORITY.WHATEVS))
-            .find(r => r.user.login === this.settings.username);
-
+    async getReaction(queue, reaction, priority=PRIORITY.NORMAL) {
+        const list = await queue(this.github.reactions.getForIssue, {content: reaction}, priority);
+        const status = list.find(r => r.user.login === this.settings.username);
         if (status && status.id) {
             return status;
         }
     }
 
     // thumbs up etc..
-    async setReaction(pr, repo, reaction, value) {
-        const queue = this.makeQueue(repo, pr);
-
+    async setReaction(queue, reaction, value, priority=PRIORITY.NORMAL) {
         if (value) {
-            return queue(this.github.reactions.createForIssue, {content: reaction}, PRIORITY.WHATEVS);
+            return queue(this.github.reactions.createForIssue, {content: reaction}, priority);
         } else {
-            const status = await this.getReaction(pr, repo, reaction);
+            const status = await this.getReaction(pr, repo, reaction, priority);
             if (status) {
-                return queue(this.github.reactions.delete, {id: status.id}, PRIORITY.WHATEVS);
+                return queue(this.github.reactions.delete, {id: status.id}, priority);
             }
         }
     }
@@ -172,7 +178,24 @@ export default class extends EventEmitter {
             args.body = `☃  magicmerge by dogalant  ☃`;
         }
         const queue = this.makeQueue();
-        return queue(this.github.issues.createComment, args, PRIORITY.HIGHEST);
+        return queue(this.github.issues.createComment, args, PRIORITY.INSANE);
+    }
+
+    /**
+     * add a `comment` ONLY if `reactionName` has not been added to the PR (by settings.username)
+     */
+    async addConditionalComment(queue, reactionName, comment, beInsane) {
+        const key = queue.$key+reactionName;
+        if (!this.conditionalComments[key]) {
+            this.conditionalComments[key] = true;
+            // dont let them make the original request insanely, as it might happen more than ONCE
+            const notified = await this.getReaction(queue, reactionName);
+            if (!notified) {
+                const priority = beInsane ? PRIORITY.INSANE : PRIORITY.NORMAL;
+                await this.setReaction(queue, reactionName, true, priority);
+                queue(this.github.issues.createComment, {body: comment}, priority);
+            }
+        }
     }
 
     // do work
@@ -183,7 +206,6 @@ export default class extends EventEmitter {
             const prs = (await this.makeQueue(repo)(this.github.pullRequests.getAll, PRIORITY.HIGHEST) || []);
 
             this.emit('debug', `[${repo}] has ${prs.length} open PRs`);
-
 
             prs.forEach(async pr => {
 
@@ -212,12 +234,25 @@ export default class extends EventEmitter {
                 }
 
                 if (hasMagicLabel) {
-                    const status = await queue(this.github.repos.getCombinedStatus, {ref: pr.head.sha}, PRIORITY.HIGH);
-                    if (status.state !== 'success' && status.statuses.length) {
-                        // jenkins is building
-                        this.emit('debug', `pr #${pr.number} in [${repo}] is still building`);
-                        return;
+                    const prName = pr.head.label.split(':')[1];
+                    const prType = prName.split('/')[0].toLowerCase();
+                    const prBase = pr.base.ref;
+
+                    if (prType === 'hotfix' || prType === 'cr' && prBase !== 'master') {
+                        this.addConditionalComment(queue, '-1', `a *${prType}* pull request should probably *BE* against master, you silly cod`, PRIORITY.INSANE);
                     }
+                    if (prType === 'feature' && prBase === 'master') {
+                        this.addConditionalComment(queue, '+1', `a *feature* pull request should probably *NOT BE* against master you silly codling`);
+                    }
+
+                    // this doesnt need to happen. it wont let us merge anyway. dont waste an api request..
+                    //
+                    // const status = await queue(this.github.repos.getCombinedStatus, {ref: pr.head.sha}, PRIORITY.HIGH);
+                    // if (status.state !== 'success' && status.statuses.length) {
+                    //     // jenkins is building
+                    //     this.emit('debug', `pr #${pr.number} in [${repo}] is still building`);
+                    //     return;
+                    // }
 
                     let reviews = await queue(this.github.pullRequests.getReviews, PRIORITY.HIGH);
 
@@ -248,11 +283,11 @@ export default class extends EventEmitter {
                     const notApproved = reviews.find(t => t.state === 'CHANGES_REQUESTED');
 
 
-                    if (!this.selfAssinged[pr.head.ref]) {
+                    if (!this.selfAssinged[queue.$key]) {
                         queue(this.github.issues.addAssigneesToIssue, {
                             assignees: [this.settings.username]
                         });
-                        this.selfAssinged[pr.head.ref] = true;
+                        this.selfAssinged[queue.$key] = true;
                     }
 
                     if (notApproved) {
@@ -261,7 +296,7 @@ export default class extends EventEmitter {
                         try {
                             const mergeStatus = await queue(this.github.pullRequests.merge, {
                                 commit_title: "magic merge!"
-                            }, PRIORITY.HIGHEST);
+                            }, PRIORITY.INSANE);
 
                             if (mergeStatus.merged) {
                                 // cool, create our comment and delete branch
@@ -273,7 +308,7 @@ export default class extends EventEmitter {
 
                                 await queue(this.github.gitdata.deleteReference, {
                                     ref: `heads/${pr.head.ref}`
-                                }, PRIORITY.HIGHEST);
+                                }, PRIORITY.INSANE);
 
                                 this.emit('debug', `pr #${pr.number} in [${repo}] was merged`);
                                 this.emit('merged', pr, repo);
@@ -288,11 +323,11 @@ export default class extends EventEmitter {
                         this.emit('debug', `pr #${pr.number} in [${repo}] has not been approved yet, skipping`);
                     }
                 } else {
-                    if (this.selfAssinged[pr.head.ref]) {
+                    if (this.selfAssinged[queue.$key]) {
                         queue(this.github.issues.removeAssigneesFromIssue, {
                             body: { "assignees": [this.settings.username] }
                         }, PRIORITY.WHATEVS);
-                        this.selfAssinged[pr.head.ref] = false;
+                        this.selfAssinged[queue.$key] = false;
                     }
                     this.emit('debug', `pr #${pr.number} in [${repo}] does not have a magic label, skipping`);
                 }
