@@ -4,7 +4,19 @@ if(!module.parent) {
 
     const magic = new MagicMerge({
         org: 'catalant',
-        repos: ['magic-merge-plz'],
+        repos: [
+            'data-api',
+            'hn-admin',
+            'hn-core',
+            'hn-webpack',
+            'hn-nerd-experience',
+            'hn-enterprise-portal',
+            'hn-marketing-sales',
+            'hn-marketing-public',
+            'hn-seahorse',
+            'magic-merge-plz',
+            'main-app'
+        ],
         label: 'a magic merge plz',
         stalePrDays: 0,
         username: 'catalantmagicmergecat',

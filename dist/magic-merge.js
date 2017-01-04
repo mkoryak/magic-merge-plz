@@ -31,7 +31,7 @@ function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, a
 const STALE_PR_LABEL = 'Stale PR';
 const EXCLUDED_BRANCHES = new Set(['develop', 'master', 'release-candidate']);
 
-const limiter = new _bottleneck2.default(10, 750);
+const limiter = new _bottleneck2.default(5, 750);
 
 const PRIORITY = {
     HIGHEST: 0,
@@ -81,6 +81,8 @@ exports.default = class extends _events2.default {
             // redirects, so allow ability to disable follow-redirects
             timeout: 5000
         });
+
+        this.selfAssinged = {};
     }
 
     /**
@@ -210,7 +212,7 @@ exports.default = class extends _events2.default {
                 args.body = `☃  magicmerge by dogalant  ☃`;
             }
             const queue = _this5.makeQueue();
-            return queue(_this5.github.issues.createComment, args, PRIORITY.HIGH);
+            return queue(_this5.github.issues.createComment, args, PRIORITY.HIGHEST);
         })();
     }
 
@@ -229,6 +231,7 @@ exports.default = class extends _events2.default {
 
                     prs.forEach((() => {
                         var _ref4 = _asyncToGenerator(function* (pr) {
+
                             const queue = _this6.makeQueue(repo, pr);
                             const hasMagicLabel = (yield queue(_this6.github.issues.getIssueLabels, {
                                 name: _this6.label
@@ -256,14 +259,14 @@ exports.default = class extends _events2.default {
                             }
 
                             if (hasMagicLabel) {
-                                const status = yield queue(_this6.github.repos.getCombinedStatus, { ref: pr.head.sha });
+                                const status = yield queue(_this6.github.repos.getCombinedStatus, { ref: pr.head.sha }, PRIORITY.HIGH);
                                 if (status.state !== 'success' && status.statuses.length) {
                                     // jenkins is building
                                     _this6.emit('debug', `pr #${ pr.number } in [${ repo }] is still building`);
                                     return;
                                 }
 
-                                let reviews = yield queue(_this6.github.pullRequests.getReviews);
+                                let reviews = yield queue(_this6.github.pullRequests.getReviews, PRIORITY.HIGH);
 
                                 const lastReviews = {};
 
@@ -295,32 +298,32 @@ exports.default = class extends _events2.default {
                                     return t.state === 'CHANGES_REQUESTED';
                                 });
 
-                                yield queue(_this6.github.issues.addAssigneesToIssue, {
-                                    assignees: [_this6.settings.username]
-                                });
+                                if (!_this6.selfAssinged[pr.head.ref]) {
+                                    queue(_this6.github.issues.addAssigneesToIssue, {
+                                        assignees: [_this6.settings.username]
+                                    });
+                                    _this6.selfAssinged[pr.head.ref] = true;
+                                }
 
                                 if (notApproved) {
                                     _this6.emit('debug', `pr #${ pr.number } in [${ repo }] has changes requested`);
-
-                                    yield Promise.all([_this6.setReaction(pr, repo, '-1', true), _this6.setReaction(pr, repo, '+1', false)]);
                                 } else if (approved) {
                                     try {
                                         const mergeStatus = yield queue(_this6.github.pullRequests.merge, {
                                             commit_title: "magic merge!"
                                         }, PRIORITY.HIGHEST);
 
-                                        yield Promise.all([_this6.setReaction(pr, repo, '-1', false), _this6.setReaction(pr, repo, '+1', true)]);
-
                                         if (mergeStatus.merged) {
                                             // cool, create our comment and delete branch
 
                                             yield _this6.makeMergeComment({
-                                                number: pr.number
+                                                number: pr.number,
+                                                repo: repo
                                             });
 
                                             yield queue(_this6.github.gitdata.deleteReference, {
                                                 ref: `heads/${ pr.head.ref }`
-                                            }, PRIORITY.HIGH);
+                                            }, PRIORITY.HIGHEST);
 
                                             _this6.emit('debug', `pr #${ pr.number } in [${ repo }] was merged`);
                                             _this6.emit('merged', pr, repo);
@@ -334,9 +337,12 @@ exports.default = class extends _events2.default {
                                     _this6.emit('debug', `pr #${ pr.number } in [${ repo }] has not been approved yet, skipping`);
                                 }
                             } else {
-                                queue(_this6.github.issues.removeAssigneesFromIssue, {
-                                    body: { "assignees": [_this6.settings.username] }
-                                }, PRIORITY.WHATEVS);
+                                if (_this6.selfAssinged[pr.head.ref]) {
+                                    queue(_this6.github.issues.removeAssigneesFromIssue, {
+                                        body: { "assignees": [_this6.settings.username] }
+                                    }, PRIORITY.WHATEVS);
+                                    _this6.selfAssinged[pr.head.ref] = false;
+                                }
                                 _this6.emit('debug', `pr #${ pr.number } in [${ repo }] does not have a magic label, skipping`);
                             }
                         });
