@@ -16,6 +16,10 @@ var _cats = require('./cats');
 
 var _cats2 = _interopRequireDefault(_cats);
 
+var _pooping = require('./pooping');
+
+var _pooping2 = _interopRequireDefault(_pooping);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
@@ -185,8 +189,9 @@ exports.default = class extends _events2.default {
 
         return _asyncToGenerator(function* () {
             try {
-                const cat = yield (0, _cats2.default)();
-                args.body = `☃  magicmerge by dogalant  ☃\n\n![poop](${ cat })`;
+                const [cat, poop] = yield [(0, _cats2.default)(), (0, _pooping2.default)()];
+
+                args.body = [`☃  magicmerge by dogalant  ☃`, poop, `![poop](${ cat })`].join('\n\n');
             } catch (poo) {
                 args.body = `☃  magicmerge by dogalant  ☃`;
             }
