@@ -2,9 +2,20 @@ import GitHubApi from 'github';
 import EventEmitter from 'events';
 import catmaker from './cats';
 import poopmaker from './pooping';
+import Bottleneck from 'bottleneck';
+
 
 const STALE_PR_LABEL = 'Stale PR';
 const EXCLUDED_BRANCHES = new Set(['develop', 'master', 'release-candidate']);
+
+const limiter = new Bottleneck(10, 750);
+
+const PRIORITY = {
+    HIGHEST: 0,
+    HIGH: 3,
+    NORMAL: 5,
+    WHATEVS: 10
+};
 
 export default class extends EventEmitter {
 
@@ -48,8 +59,7 @@ export default class extends EventEmitter {
             timeout: 5000
         });
 
-        this.nextRequestTimeoutSeconds = 5; //this number will change based on rate limit
-                                            // calculations
+
     };
 
     /**
@@ -68,36 +78,31 @@ export default class extends EventEmitter {
         };
         repo && (nipples.repo = repo);
         pr && (nipples.number = pr.number);
+        
+        return async (op, params={}, priority=PRIORITY.NORMAL) => {
+            if (params instanceof Number) {
+                priority = params;
+                params = {};
+            }
 
-        return (op, params={}) => {
-            return new Promise((resolve, reject) => {
-                setTimeout(async () => {
-                    try {
-                        const result = await op(Object.assign(
-                            {},
-                            nipples,
-                            params
-                        ));
+            try {
+                const result = await limiter.schedulePriority(priority, op, Object.assign(
+                    {},
+                    nipples,
+                    params
+                ));
 
-                        if (result && result.meta) {
-                            const meta = result.meta;
-                            if (result.meta['x-ratelimit-remaining'] > 0) {
-                                const unixNow = ~~(Date.now() / 1000);
-                                this.nextRequestTimeoutSeconds = Math.max(
-                                    Math.ceil((meta['x-ratelimit-reset'] - unixNow) / meta['x-ratelimit-remaining'] / this.settings.repos.length),
-                                    5
-                                ) + 0.5;
-                                this.emit('throttle', this.nextRequestTimeoutSeconds, meta['x-ratelimit-remaining'], (meta['x-ratelimit-reset'] - unixNow) / 60);
-                            } else {
-                                // not much i can do, next request will probably fail
-                            }
-                        }
-                        resolve(result);
-                    } catch(e) {
-                        reject(e);
+                if (result && result.meta) {
+                    const meta = result.meta;
+                    if (result.meta['x-ratelimit-remaining'] > 0) {
+                        const unixNow = ~~(Date.now() / 1000);
+                        this.emit('rate-limit', meta['x-ratelimit-remaining'], (meta['x-ratelimit-reset'] - unixNow) / 60, limiter.nbQueued());
                     }
-                }, this.nextRequestTimeoutSeconds * 1000);
-            });
+                }
+                return result;
+            } catch(e) {
+                this.emit('error', e);
+            }
         };
     }
 
@@ -129,7 +134,7 @@ export default class extends EventEmitter {
     // thumbs up etc..
     async getReaction(pr, repo, reaction) {
         const queue = this.makeQueue(repo, pr);
-        const status = (await queue(this.github.reactions.getForIssue, {content: reaction}))
+        const status = (await queue(this.github.reactions.getForIssue, {content: reaction}, PRIORITY.WHATEVS))
             .find(r => r.user.login === this.settings.username);
 
         if (status && status.id) {
@@ -142,11 +147,11 @@ export default class extends EventEmitter {
         const queue = this.makeQueue(repo, pr);
 
         if (value) {
-            return queue(this.github.reactions.createForIssue, {number: pr.number, content: reaction});
+            return queue(this.github.reactions.createForIssue, {content: reaction}, PRIORITY.WHATEVS);
         } else {
             const status = await this.getReaction(pr, repo, reaction);
             if (status) {
-                return queue(this.github.reactions.delete, {id: status.id});
+                return queue(this.github.reactions.delete, {id: status.id}, PRIORITY.WHATEVS);
             }
         }
     }
@@ -165,15 +170,15 @@ export default class extends EventEmitter {
             args.body = `☃  magicmerge by dogalant  ☃`;
         }
         const queue = this.makeQueue();
-        return queue(this.github.issues.createComment, args);
+        return queue(this.github.issues.createComment, args, PRIORITY.HIGH);
     }
 
     // do work
     async loop() {
         this.github.authenticate(this.auth);
-        await Promise.all(this.settings.repos.map(async repo => {
+        this.settings.repos.map(async repo => {
 
-            const prs = await this.makeQueue(repo)(this.github.pullRequests.getAll);
+            const prs = (await this.makeQueue(repo)(this.github.pullRequests.getAll, PRIORITY.HIGHEST) || []);
 
             this.emit('debug', `[${repo}] has ${prs.length} open PRs`);
 
@@ -182,7 +187,7 @@ export default class extends EventEmitter {
                 const queue = this.makeQueue(repo, pr);
                 const hasMagicLabel = (await queue(this.github.issues.getIssueLabels, {
                     name: this.label
-                })).filter(l => l.name === this.label).length === 1;
+                }, PRIORITY.HIGH)).filter(l => l.name === this.label).length === 1;
 
                 if (EXCLUDED_BRANCHES.has(pr.head.ref)) {
                     // lets be sure we never do anything really stupid with these
@@ -198,7 +203,7 @@ export default class extends EventEmitter {
                         // this PR has been open for longer than `ancientPrDays`
                         this.emit('stale', pr, repo);
                         try {
-                           await queue(this.github.issues.addLabels, {body: [STALE_PR_LABEL]});
+                           await queue(this.github.issues.addLabels, {body: [STALE_PR_LABEL]}, PRIORITY.WHATEVS);
                         } catch(dontCare) {}
                     }
                 }
@@ -254,7 +259,7 @@ export default class extends EventEmitter {
                         try {
                             const mergeStatus = await queue(this.github.pullRequests.merge, {
                                 commit_title: "magic merge!"
-                            });
+                            }, PRIORITY.HIGHEST);
 
                             await Promise.all([
                                 this.setReaction(pr, repo, '-1', false),
@@ -270,7 +275,7 @@ export default class extends EventEmitter {
 
                                 await queue(this.github.gitdata.deleteReference, {
                                     ref: `heads/${pr.head.ref}`
-                                });
+                                }, PRIORITY.HIGH);
 
                                 this.emit('debug', `pr #${pr.number} in [${repo}] was merged`);
                                 this.emit('merged', pr, repo);
@@ -287,21 +292,24 @@ export default class extends EventEmitter {
                 } else {
                     queue(this.github.issues.removeAssigneesFromIssue, {
                         body: { "assignees": [this.settings.username] }
-                    });
+                    }, PRIORITY.WHATEVS);
                     this.emit('debug', `pr #${pr.number} in [${repo}] does not have a magic label, skipping`);
                 }
             });
-        }));
-
-        setTimeout(() => {
-            this.loop();
-        }, this.nextRequestTimeoutSeconds * 1000);
+        });
     }
 
     start() {
-        this.ensureMagicLabels().then(() => {
-            this.loop();
-        });
+        // this.ensureMagicLabels().then(() => {
+        //
+        // });
+        //
+        this.loop();
+        setTimeout(() => {
+            limiter.on('empty', () => {
+                this.loop();
+            });
+        }, 2000); //otherwise it becomes empty too quickly and queues up too much stuff
         return this;
     }
 

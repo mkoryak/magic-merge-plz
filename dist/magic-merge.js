@@ -20,12 +20,25 @@ var _pooping = require('./pooping');
 
 var _pooping2 = _interopRequireDefault(_pooping);
 
+var _bottleneck = require('bottleneck');
+
+var _bottleneck2 = _interopRequireDefault(_bottleneck);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
 
 const STALE_PR_LABEL = 'Stale PR';
 const EXCLUDED_BRANCHES = new Set(['develop', 'master', 'release-candidate']);
+
+const limiter = new _bottleneck2.default(10, 750);
+
+const PRIORITY = {
+    HIGHEST: 0,
+    HIGH: 3,
+    NORMAL: 5,
+    WHATEVS: 10
+};
 
 exports.default = class extends _events2.default {
 
@@ -68,9 +81,6 @@ exports.default = class extends _events2.default {
             // redirects, so allow ability to disable follow-redirects
             timeout: 5000
         });
-
-        this.nextRequestTimeoutSeconds = 5; //this number will change based on rate limit
-        // calculations
     }
 
     /**
@@ -92,29 +102,33 @@ exports.default = class extends _events2.default {
         repo && (nipples.repo = repo);
         pr && (nipples.number = pr.number);
 
-        return (op, params = {}) => {
-            return new Promise((resolve, reject) => {
-                setTimeout(_asyncToGenerator(function* () {
-                    try {
-                        const result = yield op(Object.assign({}, nipples, params));
+        return (() => {
+            var _ref = _asyncToGenerator(function* (op, params = {}, priority = PRIORITY.NORMAL) {
+                if (params instanceof Number) {
+                    priority = params;
+                    params = {};
+                }
 
-                        if (result && result.meta) {
-                            const meta = result.meta;
-                            if (result.meta['x-ratelimit-remaining'] > 0) {
-                                const unixNow = ~~(Date.now() / 1000);
-                                _this.nextRequestTimeoutSeconds = Math.max(Math.ceil((meta['x-ratelimit-reset'] - unixNow) / meta['x-ratelimit-remaining'] / _this.settings.repos.length), 5) + 0.5;
-                                _this.emit('throttle', _this.nextRequestTimeoutSeconds, meta['x-ratelimit-remaining'], (meta['x-ratelimit-reset'] - unixNow) / 60);
-                            } else {
-                                // not much i can do, next request will probably fail
-                            }
+                try {
+                    const result = yield limiter.schedulePriority(priority, op, Object.assign({}, nipples, params));
+
+                    if (result && result.meta) {
+                        const meta = result.meta;
+                        if (result.meta['x-ratelimit-remaining'] > 0) {
+                            const unixNow = ~~(Date.now() / 1000);
+                            _this.emit('rate-limit', meta['x-ratelimit-remaining'], (meta['x-ratelimit-reset'] - unixNow) / 60, limiter.nbQueued());
                         }
-                        resolve(result);
-                    } catch (e) {
-                        reject(e);
                     }
-                }), this.nextRequestTimeoutSeconds * 1000);
+                    return result;
+                } catch (e) {
+                    _this.emit('error', e);
+                }
             });
-        };
+
+            return function (_x) {
+                return _ref.apply(this, arguments);
+            };
+        })();
     }
 
     /**
@@ -143,7 +157,7 @@ exports.default = class extends _events2.default {
                     } catch (foo) {}
                 });
 
-                return function (_x) {
+                return function (_x2) {
                     return _ref2.apply(this, arguments);
                 };
             })()));
@@ -156,7 +170,7 @@ exports.default = class extends _events2.default {
 
         return _asyncToGenerator(function* () {
             const queue = _this3.makeQueue(repo, pr);
-            const status = (yield queue(_this3.github.reactions.getForIssue, { content: reaction })).find(function (r) {
+            const status = (yield queue(_this3.github.reactions.getForIssue, { content: reaction }, PRIORITY.WHATEVS)).find(function (r) {
                 return r.user.login === _this3.settings.username;
             });
 
@@ -174,11 +188,11 @@ exports.default = class extends _events2.default {
             const queue = _this4.makeQueue(repo, pr);
 
             if (value) {
-                return queue(_this4.github.reactions.createForIssue, { number: pr.number, content: reaction });
+                return queue(_this4.github.reactions.createForIssue, { content: reaction }, PRIORITY.WHATEVS);
             } else {
                 const status = yield _this4.getReaction(pr, repo, reaction);
                 if (status) {
-                    return queue(_this4.github.reactions.delete, { id: status.id });
+                    return queue(_this4.github.reactions.delete, { id: status.id }, PRIORITY.WHATEVS);
                 }
             }
         })();
@@ -189,14 +203,14 @@ exports.default = class extends _events2.default {
 
         return _asyncToGenerator(function* () {
             try {
-                const [cat, poop] = yield [(0, _cats2.default)(), (0, _pooping2.default)()];
+                const [cat, poop] = yield Promise.all([(0, _cats2.default)(), (0, _pooping2.default)()]);
 
                 args.body = [`☃  magicmerge by dogalant  ☃`, poop, `![poop](${ cat })`].join('\n\n');
             } catch (poo) {
                 args.body = `☃  magicmerge by dogalant  ☃`;
             }
             const queue = _this5.makeQueue();
-            return queue(_this5.github.issues.createComment, args);
+            return queue(_this5.github.issues.createComment, args, PRIORITY.HIGH);
         })();
     }
 
@@ -206,10 +220,10 @@ exports.default = class extends _events2.default {
 
         return _asyncToGenerator(function* () {
             _this6.github.authenticate(_this6.auth);
-            yield Promise.all(_this6.settings.repos.map((() => {
+            _this6.settings.repos.map((() => {
                 var _ref3 = _asyncToGenerator(function* (repo) {
 
-                    const prs = yield _this6.makeQueue(repo)(_this6.github.pullRequests.getAll);
+                    const prs = (yield _this6.makeQueue(repo)(_this6.github.pullRequests.getAll, PRIORITY.HIGHEST)) || [];
 
                     _this6.emit('debug', `[${ repo }] has ${ prs.length } open PRs`);
 
@@ -218,7 +232,7 @@ exports.default = class extends _events2.default {
                             const queue = _this6.makeQueue(repo, pr);
                             const hasMagicLabel = (yield queue(_this6.github.issues.getIssueLabels, {
                                 name: _this6.label
-                            })).filter(function (l) {
+                            }, PRIORITY.HIGH)).filter(function (l) {
                                 return l.name === _this6.label;
                             }).length === 1;
 
@@ -236,7 +250,7 @@ exports.default = class extends _events2.default {
                                     // this PR has been open for longer than `ancientPrDays`
                                     _this6.emit('stale', pr, repo);
                                     try {
-                                        yield queue(_this6.github.issues.addLabels, { body: [STALE_PR_LABEL] });
+                                        yield queue(_this6.github.issues.addLabels, { body: [STALE_PR_LABEL] }, PRIORITY.WHATEVS);
                                     } catch (dontCare) {}
                                 }
                             }
@@ -293,7 +307,7 @@ exports.default = class extends _events2.default {
                                     try {
                                         const mergeStatus = yield queue(_this6.github.pullRequests.merge, {
                                             commit_title: "magic merge!"
-                                        });
+                                        }, PRIORITY.HIGHEST);
 
                                         yield Promise.all([_this6.setReaction(pr, repo, '-1', false), _this6.setReaction(pr, repo, '+1', true)]);
 
@@ -306,7 +320,7 @@ exports.default = class extends _events2.default {
 
                                             yield queue(_this6.github.gitdata.deleteReference, {
                                                 ref: `heads/${ pr.head.ref }`
-                                            });
+                                            }, PRIORITY.HIGH);
 
                                             _this6.emit('debug', `pr #${ pr.number } in [${ repo }] was merged`);
                                             _this6.emit('merged', pr, repo);
@@ -322,32 +336,35 @@ exports.default = class extends _events2.default {
                             } else {
                                 queue(_this6.github.issues.removeAssigneesFromIssue, {
                                     body: { "assignees": [_this6.settings.username] }
-                                });
+                                }, PRIORITY.WHATEVS);
                                 _this6.emit('debug', `pr #${ pr.number } in [${ repo }] does not have a magic label, skipping`);
                             }
                         });
 
-                        return function (_x3) {
+                        return function (_x4) {
                             return _ref4.apply(this, arguments);
                         };
                     })());
                 });
 
-                return function (_x2) {
+                return function (_x3) {
                     return _ref3.apply(this, arguments);
                 };
-            })()));
-
-            setTimeout(function () {
-                _this6.loop();
-            }, _this6.nextRequestTimeoutSeconds * 1000);
+            })());
         })();
     }
 
     start() {
-        this.ensureMagicLabels().then(() => {
-            this.loop();
-        });
+        // this.ensureMagicLabels().then(() => {
+        //
+        // });
+        //
+        this.loop();
+        setTimeout(() => {
+            limiter.on('empty', () => {
+                this.loop();
+            });
+        }, 2000); //otherwise it becomes empty too quickly and queues up too much stuff
         return this;
     }
 

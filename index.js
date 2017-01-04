@@ -4,23 +4,22 @@ if(!module.parent) {
 
     const magic = new MagicMerge({
         org: 'catalant',
-        repos: ['hn-enterprise-portal'],
+        repos: ['magic-merge-plz'],
         label: 'a magic merge plz',
         stalePrDays: 0,
         username: 'catalantmagicmergecat',
         auth: require('./auth.json')
     });
-    magic.start()
-        .on('debug', (msg) => {
-            console.log('magic-merge:', msg);
-        }).on('merged', (pr, repo) => {
-            console.log('MERGED!', repo, pr.number);
-        }).on('stale', (pr, repo) => {
-            // you will see this if a pr has been open for longer than `stalePrDays`
-            console.log('stale pr', pr.number, repo);
-        }).on('throttle', (nextRequestTimeoutSeconds, remaining, resetMins) => {
-            console.log(`request timeout seconds: [${nextRequestTimeoutSeconds}] remaining requests: [${remaining}] rate reset in minutes: [${resetMins}]`);
-        });
+    magic.start().on('debug', (msg) => {
+        console.log('magic-merge:', msg);
+    }).on('merged', (pr, repo) => {
+        console.log('MERGED!', repo, pr.number);
+    }).on('stale', (pr, repo) => {
+        // you will see this if a pr has been open for longer than `stalePrDays`
+        console.log('stale pr', pr.number, repo);
+    }).on('rate-limit', (remainingRequests, minutesUntilReset, queuedRequests) => {
+        console.log(`remaining requests: [${remainingRequests}] rate reset in minutes: [${minutesUntilReset.toFixed(2)}] queued requests: ${queuedRequests}`);
+    });
 }
 
 module.exports = require('./dist/magic-merge').default;
