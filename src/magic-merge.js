@@ -238,7 +238,7 @@ export default class extends EventEmitter {
                     const prType = prName.split('/')[0].toLowerCase();
                     const prBase = pr.base.ref;
 
-                    if (prType === 'hotfix' || prType === 'cr' && prBase !== 'master') {
+                    if ((prType === 'hotfix' || prType === 'cr') && prBase !== 'master') {
                         this.addConditionalComment(queue, '-1', `a *${prType}* pull request should probably *BE* against master, you silly cod`, PRIORITY.INSANE);
                     }
                     if (prType === 'feature' && prBase === 'master') {

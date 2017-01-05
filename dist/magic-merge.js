@@ -184,11 +184,9 @@ exports.default = class extends _events2.default {
 
         return _asyncToGenerator(function* () {
             const list = yield queue(_this3.github.reactions.getForIssue, { content: reaction }, priority);
-            console.log('magic-merge.js - getReaction() list', list);
             const status = list.find(function (r) {
                 return r.user.login === _this3.settings.username;
             });
-
             if (status && status.id) {
                 return status;
             }
@@ -234,8 +232,9 @@ exports.default = class extends _events2.default {
         var _this6 = this;
 
         return _asyncToGenerator(function* () {
-            if (!_this6.conditionalComments[queue.$key]) {
-                _this6.conditionalComments[queue.$key] = true;
+            const key = queue.$key + reactionName;
+            if (!_this6.conditionalComments[key]) {
+                _this6.conditionalComments[key] = true;
                 // dont let them make the original request insanely, as it might happen more than ONCE
                 const notified = yield _this6.getReaction(queue, reactionName);
                 if (!notified) {
@@ -270,7 +269,6 @@ exports.default = class extends _events2.default {
                                 return l.name === _this7.label;
                             }).length === 1;
 
-                            //      console.log('magic-merge.js - () pr', pr);
                             if (EXCLUDED_BRANCHES.has(pr.head.ref)) {
                                 // lets be sure we never do anything really stupid with these
                                 return;
@@ -294,14 +292,16 @@ exports.default = class extends _events2.default {
                                 const prName = pr.head.label.split(':')[1];
                                 const prType = prName.split('/')[0].toLowerCase();
                                 const prBase = pr.base.ref;
-                                console.log('magic-merge.js - () prName, prType, prBase', prName, prType, prBase, prType === 'hotfix' || prType === 'cr' && prBase !== 'master');
-                                if (prType === 'hotfix' || prType === 'cr' && prBase !== 'master') {
+
+                                if ((prType === 'hotfix' || prType === 'cr') && prBase !== 'master') {
                                     _this7.addConditionalComment(queue, '-1', `a *${ prType }* pull request should probably *BE* against master, you silly cod`, PRIORITY.INSANE);
                                 }
                                 if (prType === 'feature' && prBase === 'master') {
                                     _this7.addConditionalComment(queue, '+1', `a *feature* pull request should probably *NOT BE* against master you silly codling`);
                                 }
 
+                                // this doesnt need to happen. it wont let us merge anyway. dont waste an api request..
+                                //
                                 // const status = await queue(this.github.repos.getCombinedStatus, {ref: pr.head.sha}, PRIORITY.HIGH);
                                 // if (status.state !== 'success' && status.statuses.length) {
                                 //     // jenkins is building
