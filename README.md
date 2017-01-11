@@ -11,7 +11,7 @@ constantly go back and check their status before doing the merge.
 
 - if a PR has any "changes requested" things, it will thumb down the PR
 - if a PR has no "changes requested" and at least one approval, it will thumb up the PR
-- if the magic label is added to a PR it will add itself as an asignee, and remove itself if label is removed
+- if the magic label is added to a PR it will add itself as an assignee, and remove itself if label is removed
 - there is an option to have it mark stale PRs with "Stale PR" label.
 
 # Requirements
@@ -32,7 +32,7 @@ the constructor takes a settings object:
     settings.org         string, org name - catalant
     settings.repos       array, array of repo names in org to check
     settings.label       string, magic label name, defaults to 'a magic merge plz'
-    settings.user        string, username of user who will be acting on behalf of magic-merge
+    settings.user        string, username of user on whose behalf magic-merge will act
     settings.auth        object, auth object with {password} or {token}
     settings.stalePrDays number, number of days a pr should stay open to get an emitted event about it
 }
