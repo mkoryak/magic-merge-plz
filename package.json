@@ -1,6 +1,6 @@
 {
   "name": "magic-merge-plz",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "github magic merge",
   "main": "index.js",
   "scripts": {

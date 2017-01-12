@@ -8,7 +8,7 @@ import Bottleneck from 'bottleneck';
 const STALE_PR_LABEL = 'Stale PR';
 const EXCLUDED_BRANCHES = new Set(['develop', 'master', 'release-candidate']);
 
-const limiter = new Bottleneck(2, 1500);
+const limiter = new Bottleneck(3, 1000);
 
 const PRIORITY = {
     INSANE: -1, //actually skip the queue, just do it and hope we dont run out of requests
@@ -233,10 +233,17 @@ export default class extends EventEmitter {
                     }
                 }
 
+                if (pr.user.login === 'acconrad') {
+                    // adam's prs are always so sexy
+                    this.addConditionalComment(queue, 'hooray', `Sexy!`, PRIORITY.WHATEVS);
+                }
+
                 if (hasMagicLabel) {
                     const prName = pr.head.label.split(':')[1];
                     const prType = prName.split('/')[0].toLowerCase();
                     const prBase = pr.base.ref;
+
+
 
                     if ((prType === 'hotfix' || prType === 'cr') && prBase !== 'master') {
                         this.addConditionalComment(queue, '-1', `a *${prType}* pull request should probably *BE* against master, you silly cod`, PRIORITY.INSANE);
@@ -244,15 +251,6 @@ export default class extends EventEmitter {
                     if (prType === 'feature' && prBase === 'master') {
                         this.addConditionalComment(queue, '+1', `a *feature* pull request should probably *NOT BE* against master you silly codling`);
                     }
-
-                    // this doesnt need to happen. it wont let us merge anyway. dont waste an api request..
-                    //
-                    // const status = await queue(this.github.repos.getCombinedStatus, {ref: pr.head.sha}, PRIORITY.HIGH);
-                    // if (status.state !== 'success' && status.statuses.length) {
-                    //     // jenkins is building
-                    //     this.emit('debug', `pr #${pr.number} in [${repo}] is still building`);
-                    //     return;
-                    // }
 
                     let reviews = await queue(this.github.pullRequests.getReviews, PRIORITY.HIGH);
 
