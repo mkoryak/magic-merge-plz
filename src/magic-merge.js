@@ -3,7 +3,9 @@ import EventEmitter from 'events';
 import catmaker from './cats';
 import poopmaker from './pooping';
 import Bottleneck from 'bottleneck';
+import markovChain from 'markov';
 
+const markov = markovChain(2);
 
 const STALE_PR_LABEL = 'Stale PR';
 const EXCLUDED_BRANCHES = new Set(['develop', 'master', 'release-candidate']);
@@ -62,6 +64,7 @@ export default class extends EventEmitter {
 
         this.selfAssinged = {};
         this.conditionalComments = {};
+        this.readCommentsFromPR = {};
     };
 
     /**
@@ -169,9 +172,9 @@ export default class extends EventEmitter {
             const [ cat, poop ] = await Promise.all([ catmaker(), poopmaker() ]);
 
             args.body = [
-                `☃  magicmerge by dogalant  ☃`,
+                `☃  magicmerge by ${cat.name}  ☃`,
                 poop,
-                `![poop](${cat})`
+                `![${cat.name}](${cat.url})` //no idea yet where is a good place for cat's person
             ].join('\n\n');
 
         } catch (poo) {
@@ -184,16 +187,18 @@ export default class extends EventEmitter {
     /**
      * add a `comment` ONLY if `reactionName` has not been added to the PR (by settings.username)
      */
-    async addConditionalComment(queue, reactionName, comment, beInsane) {
+    async addConditionalComment(queue, reactionName, comment, chance=1) {
         const key = queue.$key+reactionName;
         if (!this.conditionalComments[key]) {
             this.conditionalComments[key] = true;
             // dont let them make the original request insanely, as it might happen more than ONCE
             const notified = await this.getReaction(queue, reactionName);
             if (!notified) {
-                const priority = beInsane ? PRIORITY.INSANE : PRIORITY.NORMAL;
+                const priority = PRIORITY.INSANE;
+                if (Math.random() <= chance) {
+                    queue(this.github.issues.createComment, {body: comment}, priority);
+                }
                 await this.setReaction(queue, reactionName, true, priority);
-                queue(this.github.issues.createComment, {body: comment}, priority);
             }
         }
     }
@@ -235,7 +240,22 @@ export default class extends EventEmitter {
 
                 if (pr.user.login === 'acconrad') {
                     // adam's prs are always so sexy
-                    this.addConditionalComment(queue, 'hooray', `Sexy!`, PRIORITY.WHATEVS);
+                    this.addConditionalComment(queue, 'hooray', `Sexy!`);
+                }
+
+                if (!this.readCommentsFromPR[queue.$key]) {
+                    this.readCommentsFromPR[queue.$key] = true;
+                    if (!pr.body.includes('<img')) {
+                        markov.seed(pr.body);
+                    }
+                    const comments = await queue(this.github.issues.getComments, {per_page: 50});
+                    comments.forEach(c => {
+                        // parsing images out of text is a pain, so lets just ignore those things having them
+                        if (c.user.login !== this.settings.username && !c.body.includes('<img')) {
+                            const body = c.body.substring(0, c.body.indexOf('<notifications@github.com> wrote:') - 40);
+                            markov.seed(body);
+                        }
+                    });
                 }
 
                 if (hasMagicLabel) {
@@ -243,10 +263,13 @@ export default class extends EventEmitter {
                     const prType = prName.split('/')[0].toLowerCase();
                     const prBase = pr.base.ref;
 
+                    if (this.readCommentsFromPR[queue.$key]) {
+                        this.addConditionalComment(queue, 'confused', markov.respond(pr.body).join(' '), 0.2);
+                    }
 
 
                     if ((prType === 'hotfix' || prType === 'cr') && prBase !== 'master') {
-                        this.addConditionalComment(queue, '-1', `a *${prType}* pull request should probably *BE* against master, you silly cod`, PRIORITY.INSANE);
+                        this.addConditionalComment(queue, '-1', `a *${prType}* pull request should probably *BE* against master, you silly cod`);
                     }
                     if (prType === 'feature' && prBase === 'master') {
                         this.addConditionalComment(queue, '+1', `a *feature* pull request should probably *NOT BE* against master you silly codling`);
@@ -343,7 +366,7 @@ export default class extends EventEmitter {
             limiter.on('empty', () => {
                 this.loop();
             });
-        }, 2000); //otherwise it becomes empty too quickly and queues up too much stuff
+        }, 1200); //otherwise it becomes empty too quickly and queues up too much stuff
         return this;
     }
 

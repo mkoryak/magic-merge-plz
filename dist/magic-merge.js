@@ -24,9 +24,15 @@ var _bottleneck = require('bottleneck');
 
 var _bottleneck2 = _interopRequireDefault(_bottleneck);
 
+var _markov = require('markov');
+
+var _markov2 = _interopRequireDefault(_markov);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
+
+const markov = (0, _markov2.default)(2);
 
 const STALE_PR_LABEL = 'Stale PR';
 const EXCLUDED_BRANCHES = new Set(['develop', 'master', 'release-candidate']);
@@ -85,6 +91,7 @@ exports.default = class extends _events2.default {
 
         this.selfAssinged = {};
         this.conditionalComments = {};
+        this.readCommentsFromPR = {};
     }
 
     /**
@@ -216,7 +223,8 @@ exports.default = class extends _events2.default {
             try {
                 const [cat, poop] = yield Promise.all([(0, _cats2.default)(), (0, _pooping2.default)()]);
 
-                args.body = [`☃  magicmerge by dogalant  ☃`, poop, `![poop](${ cat })`].join('\n\n');
+                args.body = [`☃  magicmerge by ${ cat.name }  ☃`, poop, `![${ cat.name }](${ cat.url })` //no idea yet where is a good place for cat's person
+                ].join('\n\n');
             } catch (poo) {
                 args.body = `☃  magicmerge by dogalant  ☃`;
             }
@@ -228,7 +236,7 @@ exports.default = class extends _events2.default {
     /**
      * add a `comment` ONLY if `reactionName` has not been added to the PR (by settings.username)
      */
-    addConditionalComment(queue, reactionName, comment, beInsane) {
+    addConditionalComment(queue, reactionName, comment, chance = 1) {
         var _this6 = this;
 
         return _asyncToGenerator(function* () {
@@ -238,9 +246,11 @@ exports.default = class extends _events2.default {
                 // dont let them make the original request insanely, as it might happen more than ONCE
                 const notified = yield _this6.getReaction(queue, reactionName);
                 if (!notified) {
-                    const priority = beInsane ? PRIORITY.INSANE : PRIORITY.NORMAL;
+                    const priority = PRIORITY.INSANE;
+                    if (Math.random() <= chance) {
+                        queue(_this6.github.issues.createComment, { body: comment }, priority);
+                    }
                     yield _this6.setReaction(queue, reactionName, true, priority);
-                    queue(_this6.github.issues.createComment, { body: comment }, priority);
                 }
             }
         })();
@@ -290,7 +300,22 @@ exports.default = class extends _events2.default {
 
                             if (pr.user.login === 'acconrad') {
                                 // adam's prs are always so sexy
-                                _this7.addConditionalComment(queue, 'hooray', `Sexy!`, PRIORITY.WHATEVS);
+                                _this7.addConditionalComment(queue, 'hooray', `Sexy!`);
+                            }
+
+                            if (!_this7.readCommentsFromPR[queue.$key]) {
+                                _this7.readCommentsFromPR[queue.$key] = true;
+                                if (!pr.body.includes('<img')) {
+                                    markov.seed(pr.body);
+                                }
+                                const comments = yield queue(_this7.github.issues.getComments, { per_page: 50 });
+                                comments.forEach(function (c) {
+                                    // parsing images out of text is a pain, so lets just ignore those things having them
+                                    if (c.user.login !== _this7.settings.username && !c.body.includes('<img')) {
+                                        const body = c.body.substring(0, c.body.indexOf('<notifications@github.com> wrote:') - 40);
+                                        markov.seed(body);
+                                    }
+                                });
                             }
 
                             if (hasMagicLabel) {
@@ -298,8 +323,12 @@ exports.default = class extends _events2.default {
                                 const prType = prName.split('/')[0].toLowerCase();
                                 const prBase = pr.base.ref;
 
+                                if (_this7.readCommentsFromPR[queue.$key]) {
+                                    _this7.addConditionalComment(queue, 'confused', markov.respond(pr.body).join(' '), 0.2);
+                                }
+
                                 if ((prType === 'hotfix' || prType === 'cr') && prBase !== 'master') {
-                                    _this7.addConditionalComment(queue, '-1', `a *${ prType }* pull request should probably *BE* against master, you silly cod`, PRIORITY.INSANE);
+                                    _this7.addConditionalComment(queue, '-1', `a *${ prType }* pull request should probably *BE* against master, you silly cod`);
                                 }
                                 if (prType === 'feature' && prBase === 'master') {
                                     _this7.addConditionalComment(queue, '+1', `a *feature* pull request should probably *NOT BE* against master you silly codling`);
@@ -409,7 +438,7 @@ exports.default = class extends _events2.default {
             limiter.on('empty', () => {
                 this.loop();
             });
-        }, 2000); //otherwise it becomes empty too quickly and queues up too much stuff
+        }, 1200); //otherwise it becomes empty too quickly and queues up too much stuff
         return this;
     }
 
