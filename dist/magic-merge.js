@@ -32,7 +32,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
 
-const markov = (0, _markov2.default)(2);
+const markov = (0, _markov2.default)(3);
 
 const STALE_PR_LABEL = 'Stale PR';
 const EXCLUDED_BRANCHES = new Set(['develop', 'master', 'release-candidate']);
@@ -248,6 +248,7 @@ exports.default = class extends _events2.default {
                 if (!notified) {
                     const priority = PRIORITY.INSANE;
                     if (Math.random() <= chance) {
+                        console.log('magic-merge.js - addConditionalComment() queue.$key, comment', queue.$key, comment);
                         queue(_this6.github.issues.createComment, { body: comment }, priority);
                     }
                     yield _this6.setReaction(queue, reactionName, true, priority);
@@ -304,16 +305,29 @@ exports.default = class extends _events2.default {
                             }
 
                             if (!_this7.readCommentsFromPR[queue.$key]) {
+                                const seed = function (text) {
+                                    text = text.replace(/\]\([^)]+\)|!\[|\[|\]/g, '');
+                                    text = text.replace(/(<img [^>]+>)/g, '');
+                                    text = text.replace(/\r\n|\n| +/g, ' ');
+                                    const idx = text.indexOf('<notifications@github.com> wrote:');
+                                    if (idx >= 0) {
+                                        text = text.substring(0, idx - 40);
+                                    }
+                                    if (text) {
+                                        markov.seed(text);
+                                    }
+                                };
+
                                 _this7.readCommentsFromPR[queue.$key] = true;
-                                if (!pr.body.includes('<img')) {
-                                    markov.seed(pr.body);
-                                }
-                                const comments = yield queue(_this7.github.issues.getComments, { per_page: 50 });
+
+                                seed(pr.body);
+
+                                const comments = yield queue(_this7.github.issues.getComments, { per_page: 100 });
                                 comments.forEach(function (c) {
-                                    // parsing images out of text is a pain, so lets just ignore those things having them
-                                    if (c.user.login !== _this7.settings.username && !c.body.includes('<img')) {
-                                        const body = c.body.substring(0, c.body.indexOf('<notifications@github.com> wrote:') - 40);
-                                        markov.seed(body);
+                                    // parsing images out of text is a pain, so lets just ignore those things
+                                    // having them
+                                    if (c.user.login !== _this7.settings.username) {
+                                        seed(c.body);
                                     }
                                 });
                             }
@@ -323,7 +337,7 @@ exports.default = class extends _events2.default {
                                 const prBase = pr.base.ref;
 
                                 if (_this7.readCommentsFromPR[queue.$key]) {
-                                    _this7.addConditionalComment(queue, 'confused', markov.respond(pr.body).join(' '), 0.2);
+                                    _this7.addConditionalComment(queue, 'confused', markov.respond(pr.body, 10).join(' '), pr.user.login === 'mkoryak' ? 1 : 0.2);
                                 }
 
                                 let reviews = yield queue(_this7.github.pullRequests.getReviews, PRIORITY.HIGH);

@@ -5,7 +5,7 @@ import poopmaker from './pooping';
 import Bottleneck from 'bottleneck';
 import markovChain from 'markov';
 
-const markov = markovChain(2);
+const markov = markovChain(3);
 
 const STALE_PR_LABEL = 'Stale PR';
 const EXCLUDED_BRANCHES = new Set(['develop', 'master', 'release-candidate']);
@@ -243,17 +243,32 @@ export default class extends EventEmitter {
                     this.addConditionalComment(queue, 'hooray', `Sexy!`);
                 }
 
+
+
                 if (!this.readCommentsFromPR[queue.$key]) {
+                    const seed = (text) => {
+                        text = text.replace(/\]\([^)]+\)|!\[|\[|\]/g, '');
+                        text = text.replace(/(<img [^>]+>)/g, '');
+                        text = text.replace(/\s+/g, ' ');
+                        const idx = text.indexOf('<notifications@github.com> wrote:');
+                        if (idx >= 0) {
+                            text = text.substring(0, idx - 40);
+                        }
+                        if (text.replace(/\s+/g, '').length) {
+                            markov.seed(text);
+                        }
+                    };
+
                     this.readCommentsFromPR[queue.$key] = true;
-                    if (!pr.body.includes('<img')) {
-                        markov.seed(pr.body);
-                    }
-                    const comments = await queue(this.github.issues.getComments, {per_page: 50});
+
+                    seed(pr.body);
+
+                    const comments = await queue(this.github.issues.getComments, {per_page: 100});
                     comments.forEach(c => {
-                        // parsing images out of text is a pain, so lets just ignore those things having them
-                        if (c.user.login !== this.settings.username && !c.body.includes('<img')) {
-                            const body = c.body.substring(0, c.body.indexOf('<notifications@github.com> wrote:') - 40);
-                            markov.seed(body);
+                        // parsing images out of text is a pain, so lets just ignore those things
+                        // having them
+                        if (c.user.login !== this.settings.username) {
+                            seed(c.body);
                         }
                     });
                 }
@@ -263,7 +278,7 @@ export default class extends EventEmitter {
                     const prBase = pr.base.ref;
 
                     if (this.readCommentsFromPR[queue.$key]) {
-                        this.addConditionalComment(queue, 'confused', markov.respond(pr.body).join(' '), 0.2);
+                        this.addConditionalComment(queue, 'confused', markov.respond(pr.body, 10).join(' '), pr.user.login === 'mkoryak' ? 1 : 0.2);
                     }
 
 
