@@ -320,18 +320,10 @@ exports.default = class extends _events2.default {
 
                             if (hasMagicLabel) {
                                 const prName = pr.head.label.split(':')[1];
-                                const prType = prName.split('/')[0].toLowerCase();
                                 const prBase = pr.base.ref;
 
                                 if (_this7.readCommentsFromPR[queue.$key]) {
                                     _this7.addConditionalComment(queue, 'confused', markov.respond(pr.body).join(' '), 0.2);
-                                }
-
-                                if ((prType === 'hotfix' || prType === 'cr') && prBase !== 'master') {
-                                    _this7.addConditionalComment(queue, '-1', `a *${ prType }* pull request should probably *BE* against master, you silly cod`);
-                                }
-                                if (prType === 'feature' && prBase === 'master') {
-                                    _this7.addConditionalComment(queue, '+1', `a *feature* pull request should probably *NOT BE* against master you silly codling`);
                                 }
 
                                 let reviews = yield queue(_this7.github.pullRequests.getReviews, PRIORITY.HIGH);

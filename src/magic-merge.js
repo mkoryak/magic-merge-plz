@@ -260,20 +260,12 @@ export default class extends EventEmitter {
 
                 if (hasMagicLabel) {
                     const prName = pr.head.label.split(':')[1];
-                    const prType = prName.split('/')[0].toLowerCase();
                     const prBase = pr.base.ref;
 
                     if (this.readCommentsFromPR[queue.$key]) {
                         this.addConditionalComment(queue, 'confused', markov.respond(pr.body).join(' '), 0.2);
                     }
 
-
-                    if ((prType === 'hotfix' || prType === 'cr') && prBase !== 'master') {
-                        this.addConditionalComment(queue, '-1', `a *${prType}* pull request should probably *BE* against master, you silly cod`);
-                    }
-                    if (prType === 'feature' && prBase === 'master') {
-                        this.addConditionalComment(queue, '+1', `a *feature* pull request should probably *NOT BE* against master you silly codling`);
-                    }
 
                     let reviews = await queue(this.github.pullRequests.getReviews, PRIORITY.HIGH);
 

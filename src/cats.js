@@ -14,12 +14,12 @@ const additional = [
     },
     {
         url: 'https://lh3.googleusercontent.com/DqqstyCZ0qIP5WXbYJs3dyxHzxiLqgMIfSLcYps0mqXSHngduc525biEOROyDm7yBSk0rEooFmuP=w5760-h3600-rw-no',
-        name: 'Spotis',
+        name: 'Spottiscat Maocat Anycat',
         owns: 'bathos'
     },
     {
         url: 'https://lh3.googleusercontent.com/2x0_aFxs6DoBtYCv9JfDXghLvMCZwDT9NoA7iVVDT-Zqr1WJbi8pdWcBoOrI4yinEvMaNqvEUhtC=w5760-h3600-rw-no',
-        name: 'Spotis',
+        name: 'Spottischketta',
         owns: 'bathos'
     },
 ];
