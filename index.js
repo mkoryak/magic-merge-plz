@@ -5,17 +5,17 @@ if(!module.parent) {
     const magic = new MagicMerge({
         org: 'catalant',
         repos: [
-            'data-api',
+       //     'data-api',
             'hn-admin',
             'hn-core',
-            'hn-webpack',
+         //   'hn-webpack',
             'hn-nerd-experience',
             'hn-enterprise-portal',
             'hn-marketing-sales',
             'hn-marketing-public',
-            'hn-seahorse',
+       //     'hn-seahorse',
             'magic-merge-plz',
-            'main-app'
+       //     'main-app'
         ],
         label: 'a magic merge plz',
         stalePrDays: 0,

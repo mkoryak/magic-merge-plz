@@ -4,8 +4,10 @@ import catmaker from './cats';
 import poopmaker from './pooping';
 import Bottleneck from 'bottleneck';
 import markovChain from 'markov';
-
+import markovSeed from './markov-seed';
 const markov = markovChain(3);
+
+markov.seed(markovSeed);
 
 const STALE_PR_LABEL = 'Stale PR';
 const EXCLUDED_BRANCHES = new Set(['develop', 'master', 'release-candidate']);
@@ -278,7 +280,7 @@ export default class extends EventEmitter {
                     const prBase = pr.base.ref;
 
                     if (this.readCommentsFromPR[queue.$key]) {
-                        this.addConditionalComment(queue, 'confused', markov.respond(pr.body, 10).join(' '), pr.user.login === 'mkoryak' ? 1 : 0.2);
+                        this.addConditionalComment(queue, 'confused', markov.respond(pr.body, 20).join(' '), pr.user.login === 'mkoryak' ? 1 : 0.2);
                     }
 
 
