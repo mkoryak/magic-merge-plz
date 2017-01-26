@@ -6,21 +6,25 @@ if(!module.parent) {
         org: 'catalant',
         repos: [
        //     'data-api',
-            'hn-admin',
-            'hn-core',
+       //      'hn-admin',
+       //     'hn-core',
          //   'hn-webpack',
-            'hn-nerd-experience',
-            'hn-enterprise-portal',
-            'hn-marketing-sales',
-            'hn-marketing-public',
-       //     'hn-seahorse',
-            'magic-merge-plz',
+         //    'hn-nerd-experience',
+           'hn-enterprise-portal',
+            // 'hn-marketing-sales',
+            // 'hn-marketing-public',
+           // 'hn-seahorse',
+            // 'magic-merge-plz',
        //     'main-app'
         ],
         label: 'a magic merge plz',
         stalePrDays: 0,
         username: 'catalantmagicmergecat',
-        auth: require('./auth.json')
+        auth: require('./auth.json'),
+        jira: {
+            host: 'gocatalant.atlassian.net',
+            auth: require('./auth.json').jira
+        }
     });
     magic.start().on('debug', (msg) => {
         console.log('magic-merge:', msg);
