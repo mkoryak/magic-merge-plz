@@ -5,6 +5,9 @@ import poopmaker from './pooping';
 import Bottleneck from 'bottleneck';
 import markovChain from 'markov';
 import markovSeed from './markov-seed';
+import Jira from './jira';
+
+
 const markov = markovChain(3);
 
 markov.seed(markovSeed);
@@ -50,6 +53,9 @@ export default class extends EventEmitter {
                 password: settings.auth.password
             };
         }
+
+
+        this.jira = new Jira(this.settings.jira.host, this.settings.jira.auth, this);
 
         this.github = new GitHubApi({
             debug: false,
@@ -149,9 +155,10 @@ export default class extends EventEmitter {
 
 
     // thumbs up etc..
-    async getReaction(queue, reaction, priority=PRIORITY.NORMAL) {
+    async getReaction(queue, reaction, priority=PRIORITY.NORMAL, username) {
+        username = username || this.settings.username;
         const list = await queue(this.github.reactions.getForIssue, {content: reaction}, priority);
-        const status = list.find(r => r.user.login === this.settings.username);
+        const status = list.find(r => r.user.login === username);
         if (status && status.id) {
             return status;
         }
@@ -169,12 +176,22 @@ export default class extends EventEmitter {
         }
     }
 
-    async makeMergeComment(args) {
+    async makeMergeComment(args, ticket) {
+        const {pr} = args;
+
+        const importantArgument = markov.respond(pr.body, 20).join(' ');
         try {
             const [ cat, poop ] = await Promise.all([ catmaker(), poopmaker() ]);
+            const dogs = ['doge', 'dog', 'doggo', 'doggorino', 'longo doggo', 'doggest',
+                'doggor', 'shiber', 'corgo', 'puggo', 'shibe', 'shoob', 'shoober', 'shooberino',
+                'puggerino', 'pupper', 'pupperino', cat.name, 'puggorino'
+            ];
+            const doge = dogs[~~(dogs.length * Math.random())];
 
             args.body = [
-                `☃  magicmerge by ${cat.name}  ☃`,
+                `☃  magicmerge by dogalant  ☃`,
+                ticket ? `Thumbs up your original PR to auto-move this ticket to reviewed status in 10 minutes` : '',
+                `Dear ${doge}: ${importantArgument}`,
                 poop,
                 `![${cat.name}](${cat.url})` //no idea yet where is a good place for cat's person
             ].join('\n\n');
@@ -184,6 +201,19 @@ export default class extends EventEmitter {
         }
         const queue = this.makeQueue();
         return queue(this.github.issues.createComment, args, PRIORITY.INSANE);
+    }
+
+    async updateJiraTicketProgress(queue, pr, status) {
+        const prName = pr.head.label.split(':')[1];
+        const ticket = prName.match(/(CAT-\d+)/i) && RegExp.$1 && RegExp.$1.toUpperCase();
+
+        const authMove = await this.getReaction(queue, '+1', PRIORITY.HIGHEST, pr.user.login);
+        
+        if (ticket && authMove) {
+            this.jira.transitionTo(ticket, status);
+            const reaction = {'Code Complete': 'laugh', 'Reviewed': 'heart'}[status];
+            this.addConditionalComment(queue, reaction, `Ticket status updated to ${status}: [${ticket}](https://${this.settings.jira.host}/browse/${ticket})`);
+        }
     }
 
     /**
@@ -216,6 +246,9 @@ export default class extends EventEmitter {
 
             prs.forEach(async pr => {
 
+                const prName = pr.head.label.split(':')[1];
+                const ticket = prName.match(/(CAT-\d+)/i) && RegExp.$1 && RegExp.$1.toUpperCase();
+
                 const queue = this.makeQueue(repo, pr);
                 const hasMagicLabel = (await queue(this.github.issues.getIssueLabels, {
                     name: this.label
@@ -240,12 +273,9 @@ export default class extends EventEmitter {
                     }
                 }
 
-                if (pr.user.login === 'acconrad') {
-                    // adam's prs are always so sexy
-                    this.addConditionalComment(queue, 'hooray', `Sexy!`);
+                if (ticket) {
+                    this.addConditionalComment(queue, 'hooray', `Jira: [${ticket}](https://${this.settings.jira.host}/browse/${ticket})`);
                 }
-
-
 
                 if (!this.readCommentsFromPR[queue.$key]) {
                     const seed = (text) => {
@@ -275,13 +305,9 @@ export default class extends EventEmitter {
                     });
                 }
 
-                if (hasMagicLabel) {
-                    const prName = pr.head.label.split(':')[1];
-                    const prBase = pr.base.ref;
 
-                    if (this.readCommentsFromPR[queue.$key]) {
-                        this.addConditionalComment(queue, 'confused', markov.respond(pr.body, 20).join(' '), pr.user.login === 'mkoryak' ? 1 : 0.2);
-                    }
+                if (hasMagicLabel) {
+
 
 
                     let reviews = await queue(this.github.pullRequests.getReviews, PRIORITY.HIGH);
@@ -319,7 +345,7 @@ export default class extends EventEmitter {
                         });
                         this.selfAssinged[queue.$key] = true;
                     }
-
+                    
                     if (notApproved) {
                         this.emit('debug', `pr #${pr.number} in [${repo}] has changes requested`);
                     } else if (approved) {
@@ -332,13 +358,17 @@ export default class extends EventEmitter {
                                 // cool, create our comment and delete branch
 
                                 await this.makeMergeComment({
-                                    number: pr.number,
+                                    pr: pr,
                                     repo: repo
-                                });
+                                }, ticket);
 
                                 await queue(this.github.gitdata.deleteReference, {
                                     ref: `heads/${pr.head.ref}`
                                 }, PRIORITY.INSANE);
+
+                                setTimeout(async () => {
+                                    this.updateJiraTicketProgress(queue, pr, 'Reviewed');
+                                }, 1000 * 60 * 10);
 
                                 this.emit('debug', `pr #${pr.number} in [${repo}] was merged`);
                                 this.emit('merged', pr, repo);
@@ -350,6 +380,8 @@ export default class extends EventEmitter {
                             this.emit('warning', `pr #${pr.number} in [${repo}] could not be merged: ${JSON.stringify(notMergable)}`);
                         }
                     } else {
+                        this.updateJiraTicketProgress(queue, pr, 'Code Complete');
+
                         this.emit('debug', `pr #${pr.number} in [${repo}] has not been approved yet, skipping`);
                     }
                 } else {
