@@ -71,7 +71,8 @@ exports.default = class extends _events2.default {
         super();
 
         this.settings = settings;
-        this.label = settings.label || 'a magic merge plz';
+        this.mergeOnlyLabel = 'a magic merge plz';
+        this.everythingLabel = 'a magic everything plz';
 
         if (settings.auth.token) {
             this.auth = {
@@ -161,6 +162,7 @@ exports.default = class extends _events2.default {
             };
         })();
         fn.$key = pr ? pr.head.ref : 'poop';
+        fn.$pr = pr;
         return fn;
     }
 
@@ -178,7 +180,7 @@ exports.default = class extends _events2.default {
                     try {
                         yield queue(_this2.github.issues.createLabel, {
                             color: '00ff00',
-                            name: _this2.label
+                            name: _this2.mergeOnlyLabel
                         });
                     } catch (foo) {}
 
@@ -229,24 +231,27 @@ exports.default = class extends _events2.default {
         })();
     }
 
-    makeMergeComment(args, ticket) {
+    makeMergeComment(queue) {
         var _this5 = this;
 
         return _asyncToGenerator(function* () {
-            const { pr } = args;
+            const pr = queue.$pr;
 
-            const importantArgument = markov.respond(pr.body, 20).join(' ');
+            const args = {};
+
             try {
+                const importantArgument = markov.respond(pr.body, 20).join(' ');
+
                 const [cat, poop] = yield Promise.all([(0, _cats2.default)(), (0, _pooping2.default)()]);
-                const dogs = ['doge', 'dog', 'doggo', 'doggorino', 'longo doggo', 'doggest', 'doggor', 'shiber', 'corgo', 'puggo', 'shibe', 'shoob', 'shoober', 'shooberino', 'puggerino', 'pupper', 'pupperino', cat.name, 'puggorino'];
+                const dogs = ['doge', 'dog', 'doggo', 'doggorino', 'longo doggo', 'doggest', 'doggor', 'shiber', 'corgo', 'puggo', 'shibe', 'shoob', 'shoober', 'shooberino', 'puggerino', 'pupper', 'pupperino', 'puggorino'];
                 const doge = dogs[~~(dogs.length * Math.random())];
 
-                args.body = [`☃  magicmerge by dogalant  ☃`, ticket ? `Thumbs up your original PR to auto-move this ticket to reviewed status in 10 minutes` : '', `Dear ${ doge }: ${ importantArgument }`, poop, `![${ cat.name }](${ cat.url })` //no idea yet where is a good place for cat's person
+                args.body = [`☃  magicmerge by dogalant  ☃`, `**Dear ${ doge }**:\n ${ importantArgument }`, poop, `![${ cat.name }](${ cat.url })` //no idea yet where is a good place for cat's person
                 ].join('\n\n');
             } catch (poo) {
                 args.body = `☃  magicmerge by dogalant  ☃`;
             }
-            const queue = _this5.makeQueue();
+
             return queue(_this5.github.issues.createComment, args, PRIORITY.INSANE);
         })();
     }
@@ -255,12 +260,9 @@ exports.default = class extends _events2.default {
         var _this6 = this;
 
         return _asyncToGenerator(function* () {
-            const prName = pr.head.label.split(':')[1];
-            const ticket = prName.match(/(CAT-\d+)/i) && RegExp.$1 && RegExp.$1.toUpperCase();
+            const ticket = _this6.jira.getTicketName(pr);
 
-            const authMove = yield _this6.getReaction(queue, '+1', PRIORITY.HIGHEST, pr.user.login);
-
-            if (ticket && authMove) {
+            if (ticket) {
                 _this6.jira.transitionTo(ticket, status);
                 const reaction = { 'Code Complete': 'laugh', 'Reviewed': 'heart' }[status];
                 _this6.addConditionalComment(queue, reaction, `Ticket status updated to ${ status }: [${ ticket }](https://${ _this6.settings.jira.host }/browse/${ ticket })`);
@@ -307,15 +309,17 @@ exports.default = class extends _events2.default {
                     prs.forEach((() => {
                         var _ref4 = _asyncToGenerator(function* (pr) {
 
-                            const prName = pr.head.label.split(':')[1];
-                            const ticket = prName.match(/(CAT-\d+)/i) && RegExp.$1 && RegExp.$1.toUpperCase();
+                            const ticket = _this8.jira.getTicketName(pr);
 
                             const queue = _this8.makeQueue(repo, pr);
-                            const hasMagicLabel = (yield queue(_this8.github.issues.getIssueLabels, {
-                                name: _this8.label
-                            }, PRIORITY.HIGH)).filter(function (l) {
-                                return l.name === _this8.label;
-                            }).length === 1;
+                            const allLabels = yield queue(_this8.github.issues.getIssueLabels, PRIORITY.HIGH);
+
+                            const hasMagicLabel = allLabels.find(function (l) {
+                                return l.name === _this8.mergeOnlyLabel;
+                            });
+                            const hasEverythingLabel = allLabels.find(function (l) {
+                                return l.name === _this8.everythingLabel;
+                            });
 
                             if (EXCLUDED_BRANCHES.has(pr.head.ref)) {
                                 // lets be sure we never do anything really stupid with these
@@ -334,10 +338,6 @@ exports.default = class extends _events2.default {
                                         yield queue(_this8.github.issues.addLabels, { body: [STALE_PR_LABEL] }, PRIORITY.WHATEVS);
                                     } catch (dontCare) {}
                                 }
-                            }
-
-                            if (ticket) {
-                                _this8.addConditionalComment(queue, 'hooray', `Jira: [${ ticket }](https://${ _this8.settings.jira.host }/browse/${ ticket })`);
                             }
 
                             if (!_this8.readCommentsFromPR[queue.$key]) {
@@ -368,7 +368,16 @@ exports.default = class extends _events2.default {
                                 });
                             }
 
-                            if (hasMagicLabel) {
+                            if (ticket) {
+                                const msg = yield _this8.jira.getTicketSummary(ticket);
+                                _this8.addConditionalComment(queue, 'hooray', msg);
+                            }
+
+                            if (hasMagicLabel || hasEverythingLabel) {
+
+                                if (hasEverythingLabel) {
+                                    _this8.updateJiraTicketProgress(queue, pr, 'Code Complete');
+                                }
 
                                 let reviews = yield queue(_this8.github.pullRequests.getReviews, PRIORITY.HIGH);
 
@@ -418,20 +427,20 @@ exports.default = class extends _events2.default {
                                         }, PRIORITY.INSANE);
 
                                         if (mergeStatus.merged) {
+
+                                            if (hasEverythingLabel) {
+                                                _this8.emit('debug', `pr #${ pr.number } in [${ repo }] was scheduled to be set to reviewed in 10 mins`);
+                                                setTimeout(function () {
+                                                    _this8.updateJiraTicketProgress(queue, pr, 'Reviewed');
+                                                }, 1000 * 60 * 10);
+                                            }
+
                                             // cool, create our comment and delete branch
-
-                                            yield _this8.makeMergeComment({
-                                                pr: pr,
-                                                repo: repo
-                                            }, ticket);
-
                                             yield queue(_this8.github.gitdata.deleteReference, {
                                                 ref: `heads/${ pr.head.ref }`
                                             }, PRIORITY.INSANE);
 
-                                            setTimeout(_asyncToGenerator(function* () {
-                                                _this8.updateJiraTicketProgress(queue, pr, 'Reviewed');
-                                            }), 1000 * 60 * 10);
+                                            yield _this8.makeMergeComment(queue);
 
                                             _this8.emit('debug', `pr #${ pr.number } in [${ repo }] was merged`);
                                             _this8.emit('merged', pr, repo);
@@ -442,8 +451,6 @@ exports.default = class extends _events2.default {
                                         _this8.emit('warning', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(notMergable) }`);
                                     }
                                 } else {
-                                    _this8.updateJiraTicketProgress(queue, pr, 'Code Complete');
-
                                     _this8.emit('debug', `pr #${ pr.number } in [${ repo }] has not been approved yet, skipping`);
                                 }
                             } else {
