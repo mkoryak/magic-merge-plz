@@ -15,7 +15,7 @@ if(!module.parent) {
             // 'hn-marketing-public',
            // 'hn-seahorse',
              'magic-merge-plz',
-       //     'main-app'
+             'main-app'
         ],
         label: 'a magic merge plz',
         stalePrDays: 0,
@@ -30,11 +30,15 @@ if(!module.parent) {
         console.log('magic-merge:', msg);
     }).on('merged', (pr, repo) => {
         console.log('MERGED!', repo, pr.number);
+    }).on('warning', (pr, repo) => {
+        console.log('warning!', repo, pr.number);
+    }).on('error', (pr, repo) => {
+        console.log('error!', repo, pr.number);
     }).on('stale', (pr, repo) => {
         // you will see this if a pr has been open for longer than `stalePrDays`
         console.log('stale pr', pr.number, repo);
     }).on('rate-limit', (remainingRequests, minutesUntilReset, queuedRequests) => {
-        console.log(`remaining requests: [${remainingRequests}] rate reset in minutes: [${minutesUntilReset.toFixed(2)}] queued requests: ${queuedRequests}`);
+     //   console.log(`remaining requests: [${remainingRequests}] rate reset in minutes: [${minutesUntilReset.toFixed(2)}] queued requests: ${queuedRequests}`);
     });
 }
 

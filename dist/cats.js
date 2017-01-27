@@ -27,7 +27,7 @@ const additional = [{ url: 'http://i.imgur.com/2DSKvlJ.jpg', name: 'Barry', owns
 }];
 
 const catPicker = concat => {
-    const chosen = additional[Math.round(Math.random() * additional.length)];
+    const chosen = additional[Math.floor(Math.random() * additional.length)];
     if (Math.random() < 0.1) {
         return chosen;
     }

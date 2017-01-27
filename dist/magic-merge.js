@@ -162,6 +162,7 @@ exports.default = class extends _events2.default {
             };
         })();
         fn.$key = pr ? pr.head.ref : 'poop';
+        fn.$pr = pr;
         return fn;
     }
 
@@ -230,24 +231,27 @@ exports.default = class extends _events2.default {
         })();
     }
 
-    makeMergeComment(args) {
+    makeMergeComment(queue) {
         var _this5 = this;
 
         return _asyncToGenerator(function* () {
-            const { pr } = args;
+            const pr = queue.$pr;
 
-            const importantArgument = markov.respond(pr.body, 20).join(' ');
+            const args = {};
+
             try {
+                const importantArgument = markov.respond(pr.body, 20).join(' ');
+
                 const [cat, poop] = yield Promise.all([(0, _cats2.default)(), (0, _pooping2.default)()]);
-                const dogs = ['doge', 'dog', 'doggo', 'doggorino', 'longo doggo', 'doggest', 'doggor', 'shiber', 'corgo', 'puggo', 'shibe', 'shoob', 'shoober', 'shooberino', 'puggerino', 'pupper', 'pupperino', cat.name, 'puggorino'];
+                const dogs = ['doge', 'dog', 'doggo', 'doggorino', 'longo doggo', 'doggest', 'doggor', 'shiber', 'corgo', 'puggo', 'shibe', 'shoob', 'shoober', 'shooberino', 'puggerino', 'pupper', 'pupperino', 'puggorino'];
                 const doge = dogs[~~(dogs.length * Math.random())];
 
-                args.body = [`☃  magicmerge by dogalant  ☃`, `Dear *${ doge }*:\n ${ importantArgument }`, poop, `![${ cat.name }](${ cat.url })` //no idea yet where is a good place for cat's person
+                args.body = [`☃  magicmerge by dogalant  ☃`, `**Dear ${ doge }**:\n ${ importantArgument }`, poop, `![${ cat.name }](${ cat.url })` //no idea yet where is a good place for cat's person
                 ].join('\n\n');
             } catch (poo) {
                 args.body = `☃  magicmerge by dogalant  ☃`;
             }
-            const queue = _this5.makeQueue();
+
             return queue(_this5.github.issues.createComment, args, PRIORITY.INSANE);
         })();
     }
@@ -371,6 +375,10 @@ exports.default = class extends _events2.default {
 
                             if (hasMagicLabel || hasEverythingLabel) {
 
+                                if (hasEverythingLabel) {
+                                    _this8.updateJiraTicketProgress(queue, pr, 'Code Complete');
+                                }
+
                                 let reviews = yield queue(_this8.github.pullRequests.getReviews, PRIORITY.HIGH);
 
                                 const lastReviews = {};
@@ -419,22 +427,20 @@ exports.default = class extends _events2.default {
                                         }, PRIORITY.INSANE);
 
                                         if (mergeStatus.merged) {
+
+                                            if (hasEverythingLabel) {
+                                                _this8.emit('debug', `pr #${ pr.number } in [${ repo }] was scheduled to be set to reviewed in 10 mins`);
+                                                setTimeout(function () {
+                                                    _this8.updateJiraTicketProgress(queue, pr, 'Reviewed');
+                                                }, 1000 * 60 * 10);
+                                            }
+
                                             // cool, create our comment and delete branch
-
-                                            yield _this8.makeMergeComment({
-                                                pr: pr,
-                                                repo: repo
-                                            });
-
                                             yield queue(_this8.github.gitdata.deleteReference, {
                                                 ref: `heads/${ pr.head.ref }`
                                             }, PRIORITY.INSANE);
 
-                                            if (hasEverythingLabel) {
-                                                setTimeout(_asyncToGenerator(function* () {
-                                                    _this8.updateJiraTicketProgress(queue, pr, 'Reviewed');
-                                                }), 1000 * 60 * 10);
-                                            }
+                                            yield _this8.makeMergeComment(queue);
 
                                             _this8.emit('debug', `pr #${ pr.number } in [${ repo }] was merged`);
                                             _this8.emit('merged', pr, repo);
@@ -445,10 +451,6 @@ exports.default = class extends _events2.default {
                                         _this8.emit('warning', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(notMergable) }`);
                                     }
                                 } else {
-                                    if (hasEverythingLabel) {
-                                        _this8.updateJiraTicketProgress(queue, pr, 'Code Complete');
-                                    }
-
                                     _this8.emit('debug', `pr #${ pr.number } in [${ repo }] has not been approved yet, skipping`);
                                 }
                             } else {
