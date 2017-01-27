@@ -30,8 +30,7 @@ export default class Jira {
         const link = `[${ticket}](https://${this.jiraHost}/browse/${ticket})`;
         return [
             `${icon} ${link}`,
-            issue.fields.summary.trim(),
-            `*Creator*: ${issue.fields.creator.displayName}`
+            issue.fields.summary.trim()
         ].join('\n\n');
     }
 
