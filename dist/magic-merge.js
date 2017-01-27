@@ -364,12 +364,12 @@ exports.default = class extends _events2.default {
                                 });
                             }
 
-                            if (hasMagicLabel || hasEverythingLabel) {
+                            if (ticket) {
+                                const msg = yield _this8.jira.getTicketSummary(ticket);
+                                _this8.addConditionalComment(queue, 'hooray', msg);
+                            }
 
-                                if (ticket) {
-                                    const msg = yield _this8.jira.getTicketSummary(ticket);
-                                    _this8.addConditionalComment(queue, 'hooray', msg);
-                                }
+                            if (hasMagicLabel || hasEverythingLabel) {
 
                                 let reviews = yield queue(_this8.github.pullRequests.getReviews, PRIORITY.HIGH);
 

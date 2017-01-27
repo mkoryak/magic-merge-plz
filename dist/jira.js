@@ -47,7 +47,7 @@ class Jira {
             const issue = yield _this2.jira.issue.getIssue({ issueKey: ticket });
             const icon = `![${ issue.fields.issuetype.name }](${ issue.fields.issuetype.iconUrl })`;
             const link = `[${ ticket }](https://${ _this2.jiraHost }/browse/${ ticket })`;
-            return [`${ icon } ${ link }`, issue.fields.summary.trim(), `*Creator*: ${ issue.fields.creator.displayName }`].join('\n\n');
+            return [`${ icon } ${ link }`, issue.fields.summary.trim()].join('\n\n');
         })();
     }
 

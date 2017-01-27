@@ -300,14 +300,13 @@ export default class extends EventEmitter {
                 }
 
 
+                if (ticket) {
+                    const msg = await this.jira.getTicketSummary(ticket);
+                    this.addConditionalComment(queue, 'hooray', msg);
+                }
+
                 if (hasMagicLabel || hasEverythingLabel) {
-
-
-                    if (ticket) {
-                        const msg = await this.jira.getTicketSummary(ticket);
-                        this.addConditionalComment(queue, 'hooray', msg);
-                    }
-
+                    
                     let reviews = await queue(this.github.pullRequests.getReviews, PRIORITY.HIGH);
 
                     const lastReviews = {};
