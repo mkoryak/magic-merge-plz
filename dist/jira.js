@@ -14,25 +14,53 @@ function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, a
 
 class Jira {
 
-    constructor(host, auth, emiter) {
+    constructor(host, auth, emitter) {
         this.jira = new _jiraConnector2.default({
             host,
             basic_auth: auth
         });
+        this.jiraHost = host;
 
-        this.emiter = emiter;
+        this.emitter = emitter;
+    }
+
+    getTicketName(pr) {
+        const prName = pr.head.label.split(':')[1];
+        return prName.match(/(CAT-\d+)/i) && RegExp.$1 && RegExp.$1.toUpperCase();
+    }
+
+    getIssue(pr) {
+        var _this = this;
+
+        return _asyncToGenerator(function* () {
+            const ticket = _this.getTicketName(pr);
+            if (ticket) {
+                return _this.jira.issue.getIssue({ issueKey: ticket });
+            }
+        })();
+    }
+
+    getTicketSummary(ticket) {
+        var _this2 = this;
+
+        return _asyncToGenerator(function* () {
+            const issue = yield _this2.jira.issue.getIssue({ issueKey: ticket });
+            const icon = `![${ issue.fields.issuetype.name }](${ issue.fields.issuetype.iconUrl })`;
+            const link = `[${ ticket }](https://${ _this2.jiraHost }/browse/${ ticket })`;
+            return [`${ icon } ${ link }`, issue.fields.summary.trim(), `*Creator*: ${ issue.fields.creator.displayName }`].join('\n\n');
+        })();
     }
 
     transitionTo(issueKey, stateName, tryCount = 0) {
-        var _this = this;
+        var _this3 = this;
 
         return _asyncToGenerator(function* () {
             const list = ['To Do', 'New', 'Ready', 'In Progress', 'Code Complete', 'Reviewed'];
             let highest = { name: '', idx: -1 };
 
-            const issue = yield _this.jira.issue.getIssue({ issueKey });
+            const issue = yield _this3.jira.issue.getIssue({ issueKey });
 
-            const transitions = (yield _this.jira.issue.getTransitions({
+            const transitions = (yield _this3.jira.issue.getTransitions({
                 issueKey
             })).transitions;
 
@@ -50,20 +78,20 @@ class Jira {
             if (tryCount > list.length) {
                 // something bad happen, we cant transition to required state!
                 // probably because state names in jira do not match our list. make eric update them
-                _this.emiter.emit('error', `Could not transition ticket ${ issueKey } to [${ stateName }], must have encountered a transition name that does not match one of these: ${ list.join(', ') }`);
+                _this3.emitter.emit('error', `Could not transition ticket ${ issueKey } to [${ stateName }], must have encountered a transition name that does not match one of these: ${ list.join(', ') }`);
             }
 
             if (highest.idx > -1 && issue.fields.status.name.toLowerCase() !== stateName.toLowerCase()) {
                 try {
-                    yield _this.jira.issue.transitionIssue({
+                    yield _this3.jira.issue.transitionIssue({
                         issueKey,
                         transition: {
                             id: highest.id
                         }
                     });
-                    yield _this.transitionTo(issueKey, stateName, tryCount++);
+                    yield _this3.transitionTo(issueKey, stateName, tryCount++);
                 } catch (e) {
-                    _this.emiter.emit('error', `exception transitioning issue ${ issueKey } to [${ stateName }]: ${ e }`);
+                    _this3.emitter.emit('error', `exception transitioning issue ${ issueKey } to [${ stateName }]: ${ e }`);
                 }
             }
         })();

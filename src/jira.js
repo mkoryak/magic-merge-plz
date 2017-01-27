@@ -2,15 +2,39 @@ import JiraClient from 'jira-connector';
 
 export default class Jira {
 
-    constructor(host, auth, emiter) {
+    constructor(host, auth, emitter) {
         this.jira = new JiraClient( {
             host,
             basic_auth: auth
         });
-        
-        this.emiter = emiter;
+        this.jiraHost = host;
+
+        this.emitter = emitter;
     }
-    
+
+    getTicketName(pr) {
+        const prName = pr.head.label.split(':')[1];
+        return prName.match(/(CAT-\d+)/i) && RegExp.$1 && RegExp.$1.toUpperCase();
+    }
+
+    async getIssue(pr) {
+        const ticket = this.getTicketName(pr);
+        if (ticket) {
+            return this.jira.issue.getIssue({issueKey: ticket});
+        }
+    }
+
+    async getTicketSummary(ticket) {
+        const issue = await this.jira.issue.getIssue({issueKey: ticket});
+        const icon = `![${issue.fields.issuetype.name}](${issue.fields.issuetype.iconUrl})`;
+        const link = `[${ticket}](https://${this.jiraHost}/browse/${ticket})`;
+        return [
+            `${icon} ${link}`,
+            issue.fields.summary.trim(),
+            `*Creator*: ${issue.fields.creator.displayName}`
+        ].join('\n\n');
+    }
+
     async transitionTo(issueKey, stateName, tryCount=0) {
         const list = ['To Do', 'New', 'Ready', 'In Progress', 'Code Complete', 'Reviewed'];
         let highest = {name: '', idx: -1};
@@ -35,7 +59,7 @@ export default class Jira {
         if (tryCount > list.length) {
             // something bad happen, we cant transition to required state!
             // probably because state names in jira do not match our list. make eric update them
-            this.emiter.emit('error', `Could not transition ticket ${issueKey} to [${stateName}], must have encountered a transition name that does not match one of these: ${list.join(', ')}`)
+            this.emitter.emit('error', `Could not transition ticket ${issueKey} to [${stateName}], must have encountered a transition name that does not match one of these: ${list.join(', ')}`)
         }
 
         if (highest.idx > -1 && issue.fields.status.name.toLowerCase() !== stateName.toLowerCase()) {
@@ -48,7 +72,7 @@ export default class Jira {
                 });
                 await this.transitionTo(issueKey, stateName, tryCount++);
             } catch(e) {
-                this.emiter.emit('error', `exception transitioning issue ${issueKey} to [${stateName}]: ${e}`);
+                this.emitter.emit('error', `exception transitioning issue ${issueKey} to [${stateName}]: ${e}`);
             }
 
         }
