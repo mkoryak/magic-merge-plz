@@ -261,6 +261,14 @@ export default class extends EventEmitter {
             prs.forEach(async pr => {
 
 
+                if (ticket) {
+                    const branchName = pr.head.label.split(':')[1];
+                    const branchPreviewMsg = `[:mag: open in branch preview](unreal:${branchName})    [link not working?](https://wiki.gocatalant.com/wiki/Branch_preview_tool#Installing_branch_preview_url_handler)`;
+
+                    const msg = await this.jira.getTicketSummary(ticket);
+                    this.addConditionalComment(queue, 'hooray', [msg, branchPreviewMsg].join('\n'));
+                }
+                
                 const queue = this.makeQueue(repo, pr);
                 this.addInfoComment(queue);
 
