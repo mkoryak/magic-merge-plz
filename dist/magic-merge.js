@@ -311,6 +311,14 @@ exports.default = class extends _events2.default {
 
                             const ticket = _this8.jira.getTicketName(pr);
 
+                            if (ticket) {
+                                const branchName = pr.head.label.split(':')[1];
+                                const branchPreviewMsg = `[:mag: open in branch preview](unreal:${ branchName })    [link not working?](https://wiki.gocatalant.com/wiki/Branch_preview_tool#Installing_branch_preview_url_handler)`;
+
+                                const msg = yield _this8.jira.getTicketSummary(ticket);
+                                _this8.addConditionalComment(queue, 'hooray', [msg, branchPreviewMsg].join('\n'));
+                            }
+
                             const queue = _this8.makeQueue(repo, pr);
                             const allLabels = yield queue(_this8.github.issues.getIssueLabels, PRIORITY.HIGH);
 
@@ -366,11 +374,6 @@ exports.default = class extends _events2.default {
                                         seed(c.body);
                                     }
                                 });
-                            }
-
-                            if (ticket) {
-                                const msg = yield _this8.jira.getTicketSummary(ticket);
-                                _this8.addConditionalComment(queue, 'hooray', msg);
                             }
 
                             if (hasMagicLabel || hasEverythingLabel) {
