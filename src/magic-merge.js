@@ -243,10 +243,10 @@ export default class extends EventEmitter {
     async addInfoComment(queue) {
         const ticket = this.jira.getTicketName(queue.$pr);
         const branchName = queue.$pr.head.label.split(':')[1];
-        const branchPreviewMsg = `open with [branch preview](github-windows://${branchName})  \n\n[cant do it?](https://wiki.gocatalant.com/wiki/Branch_preview_tool#Installing_branch_preview_url_handler)`;
-
-        const arr = ticket ? [await this.jira.getTicketSummary(ticket), branchPreviewMsg]: [branchPreviewMsg];
-        return this.addConditionalComment(queue, 'hooray', arr.join('\n'), branchPreviewMsg);
+        const branchPreviewMsgGithub = `open with [branch preview](github-windows://${branchName})  \n\n[cant do it?](https://wiki.gocatalant.com/wiki/Branch_preview_tool#Installing_branch_preview_url_handler)`;
+        const branchPreviewMsgJira = `To open with branch preview tool copy and paste this link into your browser:\n\ngithub-windows://${branchName}]`;
+        const arr = ticket ? [await this.jira.getTicketSummary(ticket), branchPreviewMsgGithub]: [branchPreviewMsgGithub];
+        return this.addConditionalComment(queue, 'hooray', arr.join('\n'), branchPreviewMsgJira);
     }
 
     // do work
@@ -263,7 +263,7 @@ export default class extends EventEmitter {
 
                 const queue = this.makeQueue(repo, pr);
                 this.addInfoComment(queue);
-                
+
                 const allLabels = await queue(this.github.issues.getIssueLabels, PRIORITY.HIGH);
 
                 const hasMagicLabel = allLabels.find(l => l.name === this.mergeOnlyLabel);
