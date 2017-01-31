@@ -17,6 +17,10 @@ export default class Jira {
         return prName.match(/(CAT-\d+)/i) && RegExp.$1 && RegExp.$1.toUpperCase();
     }
 
+    async addComment(ticket, comment) {
+        return this.jira.issue.addComment({issueKey: ticket, comment})
+    }
+
     async getIssue(pr) {
         const ticket = this.getTicketName(pr);
         if (ticket) {

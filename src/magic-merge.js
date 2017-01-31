@@ -220,20 +220,33 @@ export default class extends EventEmitter {
     /**
      * add a `comment` ONLY if `reactionName` has not been added to the PR (by settings.username)
      */
-    async addConditionalComment(queue, reactionName, comment, chance=1) {
+    async addConditionalComment(queue, reactionName, comment, jiraComment) {
         const key = queue.$key+reactionName;
+        const ticket = this.jira.getTicketName(queue.$pr);
+
         if (!this.conditionalComments[key]) {
             this.conditionalComments[key] = true;
             // dont let them make the original request insanely, as it might happen more than ONCE
             const notified = await this.getReaction(queue, reactionName);
             if (!notified) {
                 const priority = PRIORITY.INSANE;
-                if (Math.random() <= chance) {
-                    queue(this.github.issues.createComment, {body: comment}, priority);
-                }
+                queue(this.github.issues.createComment, {body: comment}, priority);
                 await this.setReaction(queue, reactionName, true, priority);
+                if (jiraComment && ticket) {
+                    this.jira.addComment(ticket, jiraComment);
+                }
             }
         }
+    }
+
+    // add comment to github and jira with info about github and jira :)
+    async addInfoComment(queue) {
+        const ticket = this.jira.getTicketName(queue.$pr);
+        const branchName = queue.$pr.head.label.split(':')[1];
+        const branchPreviewMsg = `open with [branch preview](github-windows://${branchName})  \n\n[cant do it?](https://wiki.gocatalant.com/wiki/Branch_preview_tool#Installing_branch_preview_url_handler)`;
+
+        const arr = ticket ? [await this.jira.getTicketSummary(ticket), branchPreviewMsg]: [branchPreviewMsg];
+        return this.addConditionalComment(queue, 'hooray', arr.join('\n'), branchPreviewMsg);
     }
 
     // do work
@@ -247,9 +260,10 @@ export default class extends EventEmitter {
 
             prs.forEach(async pr => {
 
-                const ticket = this.jira.getTicketName(pr);
 
                 const queue = this.makeQueue(repo, pr);
+                this.addInfoComment(queue);
+                
                 const allLabels = await queue(this.github.issues.getIssueLabels, PRIORITY.HIGH);
 
                 const hasMagicLabel = allLabels.find(l => l.name === this.mergeOnlyLabel);
@@ -301,12 +315,6 @@ export default class extends EventEmitter {
                             seed(c.body);
                         }
                     });
-                }
-
-
-                if (ticket) {
-                    const msg = await this.jira.getTicketSummary(ticket);
-                    this.addConditionalComment(queue, 'hooray', msg);
                 }
 
                 if (hasMagicLabel || hasEverythingLabel) {
