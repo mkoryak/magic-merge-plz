@@ -29,38 +29,77 @@ class Jira {
         return prName.match(/(CAT-\d+)/i) && RegExp.$1 && RegExp.$1.toUpperCase();
     }
 
-    getIssue(pr) {
+    getBranchPreviewLink(branchName) {
+        return `github-windows://${ branchName }`;
+    }
+
+    addComment(ticket, comment) {
         var _this = this;
 
         return _asyncToGenerator(function* () {
-            const ticket = _this.getTicketName(pr);
+            return _this.jira.issue.addComment({ issueKey: ticket, comment });
+        })();
+    }
+
+    updateBranchPreviewLink(pr) {
+        var _this2 = this;
+
+        return _asyncToGenerator(function* () {
+            const ticket = _this2.getTicketName(pr);
+            const branchName = pr.head.label.split(':')[1];
             if (ticket) {
-                return _this.jira.issue.getIssue({ issueKey: ticket });
+                const fields = (yield _this2.jira.issue.getEditMetadata({ issueKey: ticket })).fields;
+                const field = Object.values(fields).find(function (f) {
+                    return f.name === 'Branch preview link';
+                });
+                if (field) {
+                    const arg = {
+                        issueKey: ticket,
+                        issue: {
+                            fields: {
+                                [field.key]: _this2.getBranchPreviewLink(branchName)
+                            }
+                        }
+                    };
+                    yield _this2.jira.issue.editIssue(arg);
+                }
             }
         })();
     }
 
-    getTicketSummary(ticket) {
-        var _this2 = this;
+    getIssue(pr) {
+        var _this3 = this;
 
         return _asyncToGenerator(function* () {
-            const issue = yield _this2.jira.issue.getIssue({ issueKey: ticket });
+            const ticket = _this3.getTicketName(pr);
+            if (ticket) {
+                return _this3.jira.issue.getIssue({ issueKey: ticket });
+            }
+        })();
+    }
+
+    getTicketSummary(ticket, branchName) {
+        var _this4 = this;
+
+        return _asyncToGenerator(function* () {
+            const issue = yield _this4.jira.issue.getIssue({ issueKey: ticket });
             const icon = `![${ issue.fields.issuetype.name }](${ issue.fields.issuetype.iconUrl })`;
-            const link = `[${ ticket }](https://${ _this2.jiraHost }/browse/${ ticket })`;
-            return [`${ icon } ${ link }`, issue.fields.summary.trim()].join('\n\n');
+            const link = `[${ ticket }](https://${ _this4.jiraHost }/browse/${ ticket })`;
+            const previewLink = `[branch preview](${ _this4.getBranchPreviewLink(branchName) })`;
+            return [`${ icon } ${ link } | ${ previewLink }`, issue.fields.summary.trim()].join('\n\n');
         })();
     }
 
     transitionTo(issueKey, stateName, tryCount = 0) {
-        var _this3 = this;
+        var _this5 = this;
 
         return _asyncToGenerator(function* () {
             const list = ['To Do', 'New', 'Ready', 'In Progress', 'Code Complete', 'Reviewed'];
             let highest = { name: '', idx: -1 };
 
-            const issue = yield _this3.jira.issue.getIssue({ issueKey });
+            const issue = yield _this5.jira.issue.getIssue({ issueKey });
 
-            const transitions = (yield _this3.jira.issue.getTransitions({
+            const transitions = (yield _this5.jira.issue.getTransitions({
                 issueKey
             })).transitions;
 
@@ -78,20 +117,20 @@ class Jira {
             if (tryCount > list.length) {
                 // something bad happen, we cant transition to required state!
                 // probably because state names in jira do not match our list. make eric update them
-                _this3.emitter.emit('error', `Could not transition ticket ${ issueKey } to [${ stateName }], must have encountered a transition name that does not match one of these: ${ list.join(', ') }`);
+                _this5.emitter.emit('error', `Could not transition ticket ${ issueKey } to [${ stateName }], must have encountered a transition name that does not match one of these: ${ list.join(', ') }`);
             }
 
             if (highest.idx > -1 && issue.fields.status.name.toLowerCase() !== stateName.toLowerCase()) {
                 try {
-                    yield _this3.jira.issue.transitionIssue({
+                    yield _this5.jira.issue.transitionIssue({
                         issueKey,
                         transition: {
                             id: highest.id
                         }
                     });
-                    yield _this3.transitionTo(issueKey, stateName, tryCount++);
+                    yield _this5.transitionTo(issueKey, stateName, tryCount++);
                 } catch (e) {
-                    _this3.emitter.emit('error', `exception transitioning issue ${ issueKey } to [${ stateName }]: ${ e }`);
+                    _this5.emitter.emit('error', `exception transitioning issue ${ issueKey } to [${ stateName }]: ${ e }`);
                 }
             }
         })();

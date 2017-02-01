@@ -273,60 +273,66 @@ exports.default = class extends _events2.default {
     /**
      * add a `comment` ONLY if `reactionName` has not been added to the PR (by settings.username)
      */
-    addConditionalComment(queue, reactionName, comment, chance = 1) {
+    addConditionalComment(queue, reactionName, comment) {
         var _this7 = this;
 
         return _asyncToGenerator(function* () {
             const key = queue.$key + reactionName;
+            const ticket = _this7.jira.getTicketName(queue.$pr);
+
             if (!_this7.conditionalComments[key]) {
                 _this7.conditionalComments[key] = true;
                 // dont let them make the original request insanely, as it might happen more than ONCE
                 const notified = yield _this7.getReaction(queue, reactionName);
                 if (!notified) {
                     const priority = PRIORITY.INSANE;
-                    if (Math.random() <= chance) {
-                        queue(_this7.github.issues.createComment, { body: comment }, priority);
-                    }
+                    queue(_this7.github.issues.createComment, { body: comment }, priority);
                     yield _this7.setReaction(queue, reactionName, true, priority);
                 }
             }
         })();
     }
 
-    // do work
-    loop() {
+    // add comment to github and jira with info about github and jira :)
+    addInfoComment(queue) {
         var _this8 = this;
 
         return _asyncToGenerator(function* () {
-            _this8.github.authenticate(_this8.auth);
-            _this8.settings.repos.map((() => {
+            const ticket = _this8.jira.getTicketName(queue.$pr);
+            if (ticket) {
+                const msg = yield _this8.jira.getTicketSummary(ticket, queue.$pr.head.label.split(':')[1]);
+                return _this8.addConditionalComment(queue, 'hooray', msg);
+            }
+        })();
+    }
+
+    // do work
+    loop() {
+        var _this9 = this;
+
+        return _asyncToGenerator(function* () {
+            _this9.github.authenticate(_this9.auth);
+            _this9.settings.repos.map((() => {
                 var _ref3 = _asyncToGenerator(function* (repo) {
 
-                    const prs = (yield _this8.makeQueue(repo)(_this8.github.pullRequests.getAll, PRIORITY.HIGHEST)) || [];
+                    const prs = (yield _this9.makeQueue(repo)(_this9.github.pullRequests.getAll, PRIORITY.HIGHEST)) || [];
 
-                    _this8.emit('debug', `[${ repo }] has ${ prs.length } open PRs`);
+                    _this9.emit('debug', `[${ repo }] has ${ prs.length } open PRs`);
 
                     prs.forEach((() => {
                         var _ref4 = _asyncToGenerator(function* (pr) {
 
-                            const ticket = _this8.jira.getTicketName(pr);
+                            const queue = _this9.makeQueue(repo, pr);
+                            _this9.addInfoComment(queue);
+                            _this9.jira.updateBranchPreviewLink(pr);
 
-                            if (ticket) {
-                                const branchName = pr.head.label.split(':')[1];
-                                const branchPreviewMsg = `[:mag: open in branch preview](unreal:${ branchName })    [link not working?](https://wiki.gocatalant.com/wiki/Branch_preview_tool#Installing_branch_preview_url_handler)`;
-
-                                const msg = yield _this8.jira.getTicketSummary(ticket);
-                                _this8.addConditionalComment(queue, 'hooray', [msg, branchPreviewMsg].join('\n'));
-                            }
-
-                            const queue = _this8.makeQueue(repo, pr);
-                            const allLabels = yield queue(_this8.github.issues.getIssueLabels, PRIORITY.HIGH);
+                            const allLabels = yield queue(_this9.github.issues.getIssueLabels, PRIORITY.HIGH);
 
                             const hasMagicLabel = allLabels.find(function (l) {
-                                return l.name === _this8.mergeOnlyLabel;
+                                return l.name === _this9.mergeOnlyLabel;
                             });
                             const hasEverythingLabel = allLabels.find(function (l) {
-                                return l.name === _this8.everythingLabel;
+                                return l.name === _this9.everythingLabel;
                             });
 
                             if (EXCLUDED_BRANCHES.has(pr.head.ref)) {
@@ -334,21 +340,21 @@ exports.default = class extends _events2.default {
                                 return;
                             }
 
-                            if (_this8.settings.stalePrDays) {
+                            if (_this9.settings.stalePrDays) {
                                 const now = Date.now();
                                 const createdAt = new Date(pr.created_at).getTime();
-                                const endTime = createdAt + 3600000 * 24 * _this8.settings.stalePrDays;
+                                const endTime = createdAt + 3600000 * 24 * _this9.settings.stalePrDays;
 
                                 if (now > endTime) {
                                     // this PR has been open for longer than `ancientPrDays`
-                                    _this8.emit('stale', pr, repo);
+                                    _this9.emit('stale', pr, repo);
                                     try {
-                                        yield queue(_this8.github.issues.addLabels, { body: [STALE_PR_LABEL] }, PRIORITY.WHATEVS);
+                                        yield queue(_this9.github.issues.addLabels, { body: [STALE_PR_LABEL] }, PRIORITY.WHATEVS);
                                     } catch (dontCare) {}
                                 }
                             }
 
-                            if (!_this8.readCommentsFromPR[queue.$key]) {
+                            if (!_this9.readCommentsFromPR[queue.$key]) {
                                 const seed = function (text) {
                                     text = text.replace(/\]\([^)]+\)|!\[|\[|\]/g, '');
                                     text = text.replace(/(<img [^>]+>)/g, '');
@@ -362,15 +368,15 @@ exports.default = class extends _events2.default {
                                     }
                                 };
 
-                                _this8.readCommentsFromPR[queue.$key] = true;
+                                _this9.readCommentsFromPR[queue.$key] = true;
 
                                 seed(pr.body);
 
-                                const comments = yield queue(_this8.github.issues.getComments, { per_page: 100 });
+                                const comments = yield queue(_this9.github.issues.getComments, { per_page: 100 });
                                 comments.forEach(function (c) {
                                     // parsing images out of text is a pain, so lets just ignore those things
                                     // having them
-                                    if (c.user.login !== _this8.settings.username) {
+                                    if (c.user.login !== _this9.settings.username) {
                                         seed(c.body);
                                     }
                                 });
@@ -379,10 +385,10 @@ exports.default = class extends _events2.default {
                             if (hasMagicLabel || hasEverythingLabel) {
 
                                 if (hasEverythingLabel) {
-                                    _this8.updateJiraTicketProgress(queue, pr, 'Code Complete');
+                                    _this9.updateJiraTicketProgress(queue, pr, 'Code Complete');
                                 }
 
-                                let reviews = yield queue(_this8.github.pullRequests.getReviews, PRIORITY.HIGH);
+                                let reviews = yield queue(_this9.github.pullRequests.getReviews, PRIORITY.HIGH);
 
                                 const lastReviews = {};
 
@@ -414,56 +420,56 @@ exports.default = class extends _events2.default {
                                     return t.state === 'CHANGES_REQUESTED';
                                 });
 
-                                if (!_this8.selfAssinged[queue.$key]) {
-                                    queue(_this8.github.issues.addAssigneesToIssue, {
-                                        assignees: [_this8.settings.username]
+                                if (!_this9.selfAssinged[queue.$key]) {
+                                    queue(_this9.github.issues.addAssigneesToIssue, {
+                                        assignees: [_this9.settings.username]
                                     });
-                                    _this8.selfAssinged[queue.$key] = true;
+                                    _this9.selfAssinged[queue.$key] = true;
                                 }
 
                                 if (notApproved) {
-                                    _this8.emit('debug', `pr #${ pr.number } in [${ repo }] has changes requested`);
+                                    _this9.emit('debug', `pr #${ pr.number } in [${ repo }] has changes requested`);
                                 } else if (approved) {
                                     try {
-                                        const mergeStatus = yield queue(_this8.github.pullRequests.merge, {
+                                        const mergeStatus = yield queue(_this9.github.pullRequests.merge, {
                                             commit_title: "magic merge!"
                                         }, PRIORITY.INSANE);
 
                                         if (mergeStatus.merged) {
 
                                             if (hasEverythingLabel) {
-                                                _this8.emit('debug', `pr #${ pr.number } in [${ repo }] was scheduled to be set to reviewed in 10 mins`);
+                                                _this9.emit('debug', `pr #${ pr.number } in [${ repo }] was scheduled to be set to reviewed in 10 mins`);
                                                 setTimeout(function () {
-                                                    _this8.updateJiraTicketProgress(queue, pr, 'Reviewed');
+                                                    _this9.updateJiraTicketProgress(queue, pr, 'Reviewed');
                                                 }, 1000 * 60 * 10);
                                             }
 
                                             // cool, create our comment and delete branch
-                                            yield queue(_this8.github.gitdata.deleteReference, {
+                                            yield queue(_this9.github.gitdata.deleteReference, {
                                                 ref: `heads/${ pr.head.ref }`
                                             }, PRIORITY.INSANE);
 
-                                            yield _this8.makeMergeComment(queue);
+                                            yield _this9.makeMergeComment(queue);
 
-                                            _this8.emit('debug', `pr #${ pr.number } in [${ repo }] was merged`);
-                                            _this8.emit('merged', pr, repo);
+                                            _this9.emit('debug', `pr #${ pr.number } in [${ repo }] was merged`);
+                                            _this9.emit('merged', pr, repo);
                                         } else {
-                                            _this8.emit('debug', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(mergeStatus) }`);
+                                            _this9.emit('debug', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(mergeStatus) }`);
                                         }
                                     } catch (notMergable) {
-                                        _this8.emit('warning', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(notMergable) }`);
+                                        _this9.emit('warning', `pr #${ pr.number } in [${ repo }] could not be merged: ${ JSON.stringify(notMergable) }`);
                                     }
                                 } else {
-                                    _this8.emit('debug', `pr #${ pr.number } in [${ repo }] has not been approved yet, skipping`);
+                                    _this9.emit('debug', `pr #${ pr.number } in [${ repo }] has not been approved yet, skipping`);
                                 }
                             } else {
-                                if (_this8.selfAssinged[queue.$key]) {
-                                    queue(_this8.github.issues.removeAssigneesFromIssue, {
-                                        body: { "assignees": [_this8.settings.username] }
+                                if (_this9.selfAssinged[queue.$key]) {
+                                    queue(_this9.github.issues.removeAssigneesFromIssue, {
+                                        body: { "assignees": [_this9.settings.username] }
                                     }, PRIORITY.WHATEVS);
-                                    _this8.selfAssinged[queue.$key] = false;
+                                    _this9.selfAssinged[queue.$key] = false;
                                 }
-                                _this8.emit('debug', `pr #${ pr.number } in [${ repo }] does not have a magic label, skipping`);
+                                _this9.emit('debug', `pr #${ pr.number } in [${ repo }] does not have a magic label, skipping`);
                             }
                         });
 

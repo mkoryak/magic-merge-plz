@@ -7,15 +7,15 @@ if(!module.parent) {
         repos: [
        //     'data-api',
        //      'hn-admin',
-           'hn-core',
+          // 'hn-core',
          //   'hn-webpack',
-            'hn-nerd-experience',
+      //      'hn-nerd-experience',
            'hn-enterprise-portal',
             // 'hn-marketing-sales',
             // 'hn-marketing-public',
            // 'hn-seahorse',
-             'magic-merge-plz',
-             'main-app'
+          //   'magic-merge-plz',
+    //         'main-app'
         ],
         label: 'a magic merge plz',
         stalePrDays: 0,
