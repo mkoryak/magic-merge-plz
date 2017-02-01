@@ -17,9 +17,34 @@ export default class Jira {
         return prName.match(/(CAT-\d+)/i) && RegExp.$1 && RegExp.$1.toUpperCase();
     }
 
+    getBranchPreviewLink(branchName) {
+        return `github-windows://${branchName}`;
+    }
+
     async addComment(ticket, comment) {
         return this.jira.issue.addComment({issueKey: ticket, comment})
     }
+
+    async updateBranchPreviewLink(pr) {
+        const ticket = this.getTicketName(pr);
+        const branchName = pr.head.label.split(':')[1];
+        if (ticket) {
+            const fields = (await this.jira.issue.getEditMetadata({issueKey: ticket})).fields;
+            const field = fields && Object.values(fields).find(f => f.name === 'Branch preview link');
+            if (field) {
+                const arg = {
+                    issueKey: ticket,
+                    issue: {
+                        fields: {
+                            [field.key]: this.getBranchPreviewLink(branchName)
+                        }
+                    }
+                };
+                this.jira.issue.editIssue(arg);
+            }
+        }
+    }
+
 
     async getIssue(pr) {
         const ticket = this.getTicketName(pr);
@@ -28,12 +53,13 @@ export default class Jira {
         }
     }
 
-    async getTicketSummary(ticket) {
+    async getTicketSummary(ticket, branchName) {
         const issue = await this.jira.issue.getIssue({issueKey: ticket});
         const icon = `![${issue.fields.issuetype.name}](${issue.fields.issuetype.iconUrl})`;
         const link = `[${ticket}](https://${this.jiraHost}/browse/${ticket})`;
+        const previewLink = `[branch preview](${this.getBranchPreviewLink(branchName)})`;
         return [
-            `${icon} ${link}`,
+            `${icon} ${link} | ${previewLink}`,
             issue.fields.summary.trim()
         ].join('\n\n');
     }

@@ -220,7 +220,7 @@ export default class extends EventEmitter {
     /**
      * add a `comment` ONLY if `reactionName` has not been added to the PR (by settings.username)
      */
-    async addConditionalComment(queue, reactionName, comment, jiraComment) {
+    async addConditionalComment(queue, reactionName, comment) {
         const key = queue.$key+reactionName;
         const ticket = this.jira.getTicketName(queue.$pr);
 
@@ -232,9 +232,6 @@ export default class extends EventEmitter {
                 const priority = PRIORITY.INSANE;
                 queue(this.github.issues.createComment, {body: comment}, priority);
                 await this.setReaction(queue, reactionName, true, priority);
-                if (jiraComment && ticket) {
-                    this.jira.addComment(ticket, jiraComment);
-                }
             }
         }
     }
@@ -242,11 +239,10 @@ export default class extends EventEmitter {
     // add comment to github and jira with info about github and jira :)
     async addInfoComment(queue) {
         const ticket = this.jira.getTicketName(queue.$pr);
-        const branchName = queue.$pr.head.label.split(':')[1];
-        const branchPreviewMsgGithub = `open with [branch preview](github-windows://${branchName})  \n\n[cant do it?](https://wiki.gocatalant.com/wiki/Branch_preview_tool#Installing_branch_preview_url_handler)`;
-        const branchPreviewMsgJira = `To open with branch preview tool copy and paste this link into your browser:\n\ngithub-windows://${branchName}]`;
-        const arr = ticket ? [await this.jira.getTicketSummary(ticket), branchPreviewMsgGithub]: [branchPreviewMsgGithub];
-        return this.addConditionalComment(queue, 'hooray', arr.join('\n'), branchPreviewMsgJira);
+        if (ticket) {
+            const msg = await this.jira.getTicketSummary(ticket, queue.$pr.head.label.split(':')[1]);
+            return this.addConditionalComment(queue, 'hooray', msg);
+        }
     }
 
     // do work
@@ -259,9 +255,10 @@ export default class extends EventEmitter {
             this.emit('debug', `[${repo}] has ${prs.length} open PRs`);
 
             prs.forEach(async pr => {
-                
+
                 const queue = this.makeQueue(repo, pr);
                 this.addInfoComment(queue);
+                this.jira.updateBranchPreviewLink(pr);
 
                 const allLabels = await queue(this.github.issues.getIssueLabels, PRIORITY.HIGH);
 

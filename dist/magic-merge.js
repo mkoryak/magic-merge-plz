@@ -273,7 +273,7 @@ exports.default = class extends _events2.default {
     /**
      * add a `comment` ONLY if `reactionName` has not been added to the PR (by settings.username)
      */
-    addConditionalComment(queue, reactionName, comment, jiraComment) {
+    addConditionalComment(queue, reactionName, comment) {
         var _this7 = this;
 
         return _asyncToGenerator(function* () {
@@ -288,9 +288,6 @@ exports.default = class extends _events2.default {
                     const priority = PRIORITY.INSANE;
                     queue(_this7.github.issues.createComment, { body: comment }, priority);
                     yield _this7.setReaction(queue, reactionName, true, priority);
-                    if (jiraComment && ticket) {
-                        _this7.jira.addComment(ticket, jiraComment);
-                    }
                 }
             }
         })();
@@ -302,11 +299,10 @@ exports.default = class extends _events2.default {
 
         return _asyncToGenerator(function* () {
             const ticket = _this8.jira.getTicketName(queue.$pr);
-            const branchName = queue.$pr.head.label.split(':')[1];
-            const branchPreviewMsgGithub = `open with [branch preview](github-windows://${ branchName })  \n\n[cant do it?](https://wiki.gocatalant.com/wiki/Branch_preview_tool#Installing_branch_preview_url_handler)`;
-            const branchPreviewMsgJira = `To open with branch preview tool copy and paste this link into your browser:\n\ngithub-windows://${ branchName }]`;
-            const arr = ticket ? [yield _this8.jira.getTicketSummary(ticket), branchPreviewMsgGithub] : [branchPreviewMsgGithub];
-            return _this8.addConditionalComment(queue, 'hooray', arr.join('\n'), branchPreviewMsgJira);
+            if (ticket) {
+                const msg = yield _this8.jira.getTicketSummary(ticket, queue.$pr.head.label.split(':')[1]);
+                return _this8.addConditionalComment(queue, 'hooray', msg);
+            }
         })();
     }
 
@@ -328,6 +324,7 @@ exports.default = class extends _events2.default {
 
                             const queue = _this9.makeQueue(repo, pr);
                             _this9.addInfoComment(queue);
+                            _this9.jira.updateBranchPreviewLink(pr);
 
                             const allLabels = yield queue(_this9.github.issues.getIssueLabels, PRIORITY.HIGH);
 

@@ -10,11 +10,11 @@ if(!module.parent) {
           // 'hn-core',
          //   'hn-webpack',
       //      'hn-nerd-experience',
-        //   'hn-enterprise-portal',
+           'hn-enterprise-portal',
             // 'hn-marketing-sales',
             // 'hn-marketing-public',
            // 'hn-seahorse',
-             'magic-merge-plz',
+          //   'magic-merge-plz',
     //         'main-app'
         ],
         label: 'a magic merge plz',
