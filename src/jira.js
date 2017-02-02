@@ -65,7 +65,9 @@ export default class Jira {
     }
 
     async transitionTo(issueKey, stateName, tryCount=0) {
-        const list = ['To Do', 'New', 'Ready', 'In Progress', 'Code Complete', 'Reviewed'];
+        return;
+
+        const list = ['New', 'Ready', 'In Progress', 'Product Review', 'Code Review', 'Closed'];
         let highest = {name: '', idx: -1};
 
         const issue = await this.jira.issue.getIssue({issueKey});

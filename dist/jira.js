@@ -49,7 +49,7 @@ class Jira {
             const branchName = pr.head.label.split(':')[1];
             if (ticket) {
                 const fields = (yield _this2.jira.issue.getEditMetadata({ issueKey: ticket })).fields;
-                const field = Object.values(fields).find(function (f) {
+                const field = fields && Object.values(fields).find(function (f) {
                     return f.name === 'Branch preview link';
                 });
                 if (field) {
@@ -61,7 +61,7 @@ class Jira {
                             }
                         }
                     };
-                    yield _this2.jira.issue.editIssue(arg);
+                    _this2.jira.issue.editIssue(arg);
                 }
             }
         })();
@@ -94,7 +94,9 @@ class Jira {
         var _this5 = this;
 
         return _asyncToGenerator(function* () {
-            const list = ['To Do', 'New', 'Ready', 'In Progress', 'Code Complete', 'Reviewed'];
+            return;
+
+            const list = ['New', 'Ready', 'In Progress', 'Product Review', 'Code Review', 'Closed'];
             let highest = { name: '', idx: -1 };
 
             const issue = yield _this5.jira.issue.getIssue({ issueKey });
