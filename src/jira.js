@@ -14,7 +14,7 @@ export default class Jira {
 
     getTicketName(pr) {
         const prName = pr.head.label.split(':')[1];
-        return prName.match(/(CAT-\d+)/i) && RegExp.$1 && RegExp.$1.toUpperCase();
+        return prName.match(/(CA?T-\d+)/i) && RegExp.$1 && RegExp.$1.toUpperCase();
     }
 
     getBranchPreviewLink(branchName) {
